@@ -23,6 +23,8 @@ class Reglages:
     tampon_son_ms: int = TAMPON_SON_MS
     plein_ecran: bool = False
     tests: dict = field(default_factory=dict)   # identifiant de carte -> liste de Resultat.vers_dict()
+    retards: dict = field(default_factory=dict)  # identifiant de carte -> ResultatRetard.vers_dict() (dernière mesure)
+    ecran_mire: str = ""            # connecteur de l'écran branché sur la carte pour la mesure du retard
 
     @classmethod
     def charger(cls, chemin=None):

@@ -1,9 +1,12 @@
-.TH LUCARNE 1 "novembre 2026" "lucarne 0.1.0" "Commandes utilisateur"
+.TH LUCARNE 1 "novembre 2026" "lucarne 0.2.0" "Commandes utilisateur"
 .SH NOM
 lucarne \- l'image d'une carte de capture avec le moins de retard possible, et son son
 .SH SYNOPSIS
 .B lucarne
 .RB [ \-\-version ]
+.br
+.B lucarne \-\-compresser
+.I description.json
 .SH DESCRIPTION
 .B lucarne
 ouvre une fenêtre GTK pour regarder une carte de capture HDMI\-USB (MS2109 et semblables).
@@ -18,16 +21,45 @@ Le bouton
 mesure chaque mode de la carte (cadence réelle, attente, décodage) ; le mode
 .B Automatique
 prend ensuite le plus rapide.
+.PP
+Dans la fenêtre de l'image, la touche
+.B S
+(ou le bouton
+.BR Capturer )
+enregistre l'image en PNG et la touche
+.B R
+(ou le bouton
+.BR Enregistrer )
+démarre ou arrête l'enregistrement. À l'arrêt, la vidéo brute (MJPEG et son FLAC) est compressée en arrière\-plan
+en H.264 et AAC par
+.BR ffmpeg (1),
+par la file Gagarine. La rangée
+.B Retard réel
+mesure le retard de bout en bout avec une mire affichée sur une sortie HDMI branchée sur la carte.
 .SH OPTIONS
 .TP
 .B \-\-version
 Affiche la version et quitte.
+.TP
+.BI \-\-compresser " description.json"
+Compresse un enregistrement brut décrit par ce fichier (lancé tout seul à l'arrêt de l'enregistrement ; à la main
+pour relancer une compression échouée).
 .SH FICHIERS
 .TP
 .I ~/.config/lucarne/reglages.json
 Réglages (carte, mode, sortie, tampon du son, plein écran) et résultats du test de chaque carte.
+.TP
+.I ~/Images/Lucarne
+Images capturées (« Lucarne AAAA\-MM\-JJ HH\-MM\-SS.png »).
+.TP
+.I ~/Vidéos/Lucarne
+Enregistrements compressés (MP4).
+.TP
+.I ~/Vidéos/Lucarne/brut
+Enregistrements bruts en attente de compression, avec leur description JSON.
 .SH VOIR AUSSI
 .BR mpv (1),
+.BR ffmpeg (1),
 .BR pw\-loopback (1),
 .BR pactl (1)
 .SH AUTEUR

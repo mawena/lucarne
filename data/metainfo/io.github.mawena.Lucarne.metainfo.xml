@@ -14,7 +14,9 @@
       <li>l’image passe par mpv réglé pour les sources en direct : sans cache ni attente, chaque image s’affiche dès qu’elle est décodée ;</li>
       <li>le son va directement de la carte à la sortie par PipeWire ;</li>
       <li>le test de vitesse mesure chaque mode de la carte et choisit le plus rapide ;</li>
-      <li>le son de la carte est trouvé tout seul, et les branchements sont suivis en direct.</li>
+      <li>le son de la carte est trouvé tout seul, et les branchements sont suivis en direct ;</li>
+      <li>capture d’image en PNG et enregistrement de la vidéo avec son, compressé en arrière-plan ;</li>
+      <li>mesure du retard réel de bout en bout avec une mire.</li>
     </ul>
   </description>
   <launchable type="desktop-id">io.github.mawena.Lucarne.desktop</launchable>
@@ -29,6 +31,11 @@
     <category>Video</category>
   </categories>
   <releases>
+    <release version="0.2.0" date="2026-11-25">
+      <description>
+        <p>Capture d’image (touche S), enregistrement vidéo avec son compressé en arrière-plan (touche R), mesure du retard réel avec une mire.</p>
+      </description>
+    </release>
     <release version="0.1.0" date="2026-11-25">
       <description>
         <p>Première version : image à faible latence, son vers la sortie choisie, test de vitesse des modes.</p>
