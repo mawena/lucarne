@@ -1,0 +1,35 @@
+#!/usr/bin/env python3
+"""Lance Lucarne. Installé dans /usr/bin, les modules sont dans /usr/share/lucarne ; dans le dépôt, à côté de bin/."""
+import os
+import sys
+
+_ici = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, "/usr/share/lucarne" if _ici == "/usr/bin" else os.path.dirname(_ici))
+
+
+def _dependances():
+    """Vérifie PyGObject, GTK 4, libadwaita et GStreamer ; sinon dit clairement quoi installer."""
+    try:
+        import gi
+    except ImportError:
+        sys.exit("Lucarne : il manque PyGObject.\n"
+                 "Installe-le : sudo apt install python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 gir1.2-gstreamer-1.0")
+    manque = []
+    for espace, version, paquet in (("Gtk", "4.0", "gir1.2-gtk-4.0"), ("Adw", "1", "gir1.2-adw-1"),
+                                     ("Gst", "1.0", "gir1.2-gstreamer-1.0")):
+        try:
+            gi.require_version(espace, version)
+        except ValueError:
+            manque.append(paquet)
+    if manque:
+        sys.exit("Lucarne : il manque " + ", ".join(manque) + ".\nInstalle : sudo apt install " + " ".join(manque))
+
+
+if __name__ == "__main__":
+    if "--version" in sys.argv[1:]:
+        from lucarne import __version__
+        print(f"lucarne {__version__}")
+        sys.exit(0)
+    _dependances()
+    from lucarne.application import main
+    sys.exit(main())

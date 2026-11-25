@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.mawena.Lucarne</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Lucarne</name>
+  <summary>L’image d’une carte de capture, sans retard, avec son son</summary>
+  <developer id="io.github.mawena">
+    <name>mawena</name>
+  </developer>
+  <description>
+    <p>Lucarne affiche l’image d’une carte de capture HDMI-USB avec le moins de retard possible, et envoie son son vers la sortie audio de votre choix : casque Bluetooth, haut-parleurs, dock.</p>
+    <ul>
+      <li>l’image passe par mpv réglé pour les sources en direct : sans cache ni attente, chaque image s’affiche dès qu’elle est décodée ;</li>
+      <li>le son va directement de la carte à la sortie par PipeWire ;</li>
+      <li>le test de vitesse mesure chaque mode de la carte et choisit le plus rapide ;</li>
+      <li>le son de la carte est trouvé tout seul, et les branchements sont suivis en direct.</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">io.github.mawena.Lucarne.desktop</launchable>
+  <provides>
+    <binary>lucarne</binary>
+  </provides>
+  <url type="homepage">https://github.com/mawena/lucarne</url>
+  <url type="bugtracker">https://github.com/mawena/lucarne/issues</url>
+  <content_rating type="oars-1.1"/>
+  <categories>
+    <category>AudioVideo</category>
+    <category>Video</category>
+  </categories>
+  <releases>
+    <release version="0.1.0" date="2026-11-25">
+      <description>
+        <p>Première version : image à faible latence, son vers la sortie choisie, test de vitesse des modes.</p>
+      </description>
+    </release>
+  </releases>
+</component>

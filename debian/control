@@ -1,0 +1,36 @@
+Source: lucarne
+Section: video
+Priority: optional
+Maintainer: mawena <57989130+mawena@users.noreply.github.com>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.6.2
+Homepage: https://github.com/mawena/lucarne
+Rules-Requires-Root: no
+
+Package: lucarne
+Architecture: all
+Depends: ${misc:Depends},
+         mawena-depot,
+         python3 (>= 3.10),
+         python3-gi,
+         gir1.2-gtk-4.0,
+         gir1.2-adw-1 (>= 1.4),
+         gir1.2-gstreamer-1.0,
+         gstreamer1.0-plugins-good,
+         mpv,
+         pipewire-bin,
+         pulseaudio-utils
+Recommends: gstreamer1.0-pipewire
+Description: low-latency viewer for USB HDMI capture cards
+ Lucarne shows the picture of a USB HDMI capture card (MS2109 and similar)
+ with as little delay as possible, and sends its sound to the chosen audio
+ output (Bluetooth headset, speakers, dock).
+ .
+ The picture is played by mpv tuned for live sources (no cache, no timing,
+ one image of swap chain) and the sound goes straight from the card to the
+ output through PipeWire (pw-loopback), so neither waits for the other.
+ .
+ A speed test measures every mode of the card (real frame rate, waiting time
+ and decoding time) and picks the fastest one. The card's sound is found
+ automatically (same USB device), cards and audio outputs are followed live
+ when plugged or unplugged, and settings are kept between launches.
