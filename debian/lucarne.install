@@ -1,0 +1,6 @@
+bin/lucarne usr/bin
+lucarne/*.py usr/share/lucarne/lucarne
+data/applications/io.github.mawena.Lucarne.desktop usr/share/applications
+data/icons/hicolor/scalable/apps/*.svg usr/share/icons/hicolor/scalable/apps
+data/icons/hicolor/symbolic/apps/*.svg usr/share/icons/hicolor/symbolic/apps
+data/metainfo/io.github.mawena.Lucarne.metainfo.xml usr/share/metainfo

@@ -1,0 +1,8 @@
+lucarne (0.1.0) unstable; urgency=medium
+
+  * Première version : image de la carte par mpv réglé pour la latence
+    minimale, son par pw-loopback vers la sortie choisie, test de vitesse
+    des modes avec choix automatique du plus rapide, association image/son
+    par l'appareil USB, suivi des branchements, réglages gardés.
+
+ -- mawena <gamligocharles@gmail.com>  Wed, 25 Nov 2026 01:00:00 +0100
