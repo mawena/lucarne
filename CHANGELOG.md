@@ -3,6 +3,16 @@
 Toutes les modifications notables de Lucarne sont consignées ici.
 Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versions : [SemVer](https://semver.org/lang/fr/).
 
+## [0.3.1] - 2026-11-25
+
+### Corrigé
+- Son recalé sur les longs enregistrements : le son de la carte est enregistré en FLAC dans du Matroska (`.mka`),
+  qui garde l'heure de chaque morceau, et la compression le recale sur ces heures (`aresample=async=1000`,
+  `first_pts=0`, décalage de départ par `-itsoffset`). Les échantillons perdus quand le PC est chargé sont comblés et
+  la dérive entre l'horloge de la carte et celle du PC est rattrapée en étirant ou serrant le son (≈ 2 % au plus,
+  inaudible). Essai : un trou d'une seconde dans le son est comblé (9,8 s de son au lieu de 9,0 s, image de 10 s
+  moins 0,2 s de décalage). Auparavant, le son se décalait pour toute la suite de l'enregistrement.
+
 ## [0.3.0] - 2026-11-25
 
 ### Ajouté
@@ -54,6 +64,7 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versions : [S
 - Réglages gardés dans `~/.config/lucarne/reglages.json`.
 - Paquet `.deb` (lanceur de bureau, icônes, metainfo).
 
+[0.3.1]: https://github.com/mawena/lucarne/releases/tag/v0.3.1
 [0.3.0]: https://github.com/mawena/lucarne/releases/tag/v0.3.0
 [0.2.0]: https://github.com/mawena/lucarne/releases/tag/v0.2.0
 [0.1.0]: https://github.com/mawena/lucarne/releases/tag/v0.1.0

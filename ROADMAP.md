@@ -41,6 +41,13 @@ envoie son son vers la sortie audio choisie (casque Bluetooth, haut-parleurs, do
 - [x] Tests unitaires, README, CHANGELOG, page de manuel, paquet
 - [x] Release 0.3.0 : tag, release GitHub, dépôt APT
 
+## Phase 4 — 0.3.1
+
+- [x] Son en FLAC dans du Matroska (heure de chaque morceau gardée)
+- [x] Compression : son recalé sur ses heures (`aresample=async=1000:first_pts=0`, départ par `-itsoffset`)
+- [x] Essai : trou d'une seconde comblé ; essai réel avec la carte, image et son de même durée
+- [x] Release 0.3.1 : tag, release GitHub, dépôt APT
+
 ## Plus tard
 
-- [ ] Recaler le son pendant les très longs enregistrements (dérive des horloges)
+Rien de prévu.

@@ -31,6 +31,11 @@
     <category>Video</category>
   </categories>
   <releases>
+    <release version="0.3.1" date="2026-11-25">
+      <description>
+        <p>Le son reste calé sur l'image pendant les longs enregistrements.</p>
+      </description>
+    </release>
     <release version="0.3.0" date="2026-11-25">
       <description>
         <p>Enregistrement compressé en direct (2 à 4 Go par heure au lieu de 24 à 70) et choix des dossiers des captures et des vidéos.</p>

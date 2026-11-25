@@ -41,7 +41,7 @@ Lucarne règle tout ça en un bouton : **Regarder**.
 - **Capture d'image** : la touche `s` (ou le bouton **Capturer**) demande à mpv, par sa prise de commande
   (`--input-ipc-server`), d'enregistrer l'image affichée en PNG.
 - **Enregistrement** : pendant qu'on enregistre, mpv copie le flux MJPEG de la carte tel quel (`stream-record` : rien
-  de plus sur l'image) et GStreamer enregistre le son de la carte en FLAC. À l'arrêt, un processus séparé
+  de plus sur l'image) et GStreamer enregistre le son de la carte en FLAC, dans du Matroska qui garde l'heure de chaque morceau. À l'arrêt, un processus séparé
   (`systemd-run --user`, donc indépendant de la fenêtre) lance `lucarne --compresser`, qui passe ffmpeg par la file
   Gagarine en priorité de fond : H.264 (VA-API si la carte graphique le permet, sinon x264) et AAC, en un MP4. Le
   son est calé sur l'image d'après le décalage mesuré au démarrage. Le brut est supprimé une fois le MP4 fini.
@@ -56,7 +56,7 @@ Lucarne règle tout ça en un bouton : **Regarder**.
   nommée au lieu d'un fichier. Lucarne la vide dans deux fils, sans jamais faire attendre mpv (réserve en mémoire
   jusqu'à 512 Mo ; au-delà, l'enregistrement s'arrête mais l'image continue), et la passe à ffmpeg qui compresse en
   H.264 au fil de l'eau (VA-API, sinon x264 `ultrafast`). Ffmpeg tourne hors de la file Gagarine : c'est du temps
-  réel. Le son reste en FLAC ; à l'arrêt, l'image est copiée telle quelle et le son passe en AAC, réunis en MP4 en
+  réel. Le son reste en FLAC (Matroska) ; à l'arrêt, l'image est copiée telle quelle et le son passe en AAC, réunis en MP4 en
   quelques secondes (par la file Gagarine). Essai réel : 8 s de 1080p60 donnent 1,5 Mo, image et son de même durée.
 
 En mode brut, l'enregistrement est volumineux : environ 24 Go par heure en 720×480 et 70 Go par heure en 1080p. En

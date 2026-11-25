@@ -1,4 +1,4 @@
-.TH LUCARNE 1 "novembre 2026" "lucarne 0.3.0" "Commandes utilisateur"
+.TH LUCARNE 1 "novembre 2026" "lucarne 0.3.1" "Commandes utilisateur"
 .SH NOM
 lucarne \- l'image d'une carte de capture avec le moins de retard possible, et son son
 .SH SYNOPSIS
@@ -32,7 +32,7 @@ enregistre l'image en PNG et la touche
 .BR Enregistrer )
 démarre ou arrête l'enregistrement. Selon le réglage
 .BR "Manière d'enregistrer" ,
-la vidéo brute (MJPEG et son FLAC) est compressée à l'arrêt en arrière\-plan en H.264 et AAC par
+la vidéo brute (MJPEG et son FLAC dans du Matroska) est compressée à l'arrêt en arrière\-plan en H.264 et AAC par
 .BR ffmpeg (1),
 par la file Gagarine (« Brut, puis compressé », par défaut), ou l'image est compressée en H.264 pendant
 l'enregistrement (« Compressé en direct », environ 2 à 4 Go par heure) et seul le MP4 est assemblé à l'arrêt.
