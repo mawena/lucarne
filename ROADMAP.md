@@ -29,7 +29,7 @@ envoie son son vers la sortie audio choisie (casque Bluetooth, haut-parleurs, do
 - [x] Mire plein écran sans danger pour l'épilepsie, rangée « Retard réel » dans la fenêtre, résultats gardés
 - [x] Tests unitaires, README, CHANGELOG, page de manuel, paquet (ffmpeg, gstreamer1.0-pulseaudio)
 - [x] Essai réel de la mire : la carte voit la sortie HDMI-1, 19 changements sur 20 retrouvés (carte ≈ 9 ms, total ≈ 27 ms)
-- [ ] Release 0.2.0 : tag, release GitHub, dépôt APT
+- [x] Release 0.2.0 : tag, release GitHub, dépôt APT
 
 ## Plus tard
 
