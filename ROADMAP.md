@@ -29,9 +29,18 @@ envoie son son vers la sortie audio choisie (casque Bluetooth, haut-parleurs, do
 - [x] Mire plein écran sans danger pour l'épilepsie, rangée « Retard réel » dans la fenêtre, résultats gardés
 - [x] Tests unitaires, README, CHANGELOG, page de manuel, paquet (ffmpeg, gstreamer1.0-pulseaudio)
 - [x] Essai réel de la mire : la carte voit la sortie HDMI-1, 19 changements sur 20 retrouvés (carte ≈ 9 ms, total ≈ 27 ms)
-- [ ] Release 0.2.0 : tag, release GitHub, dépôt APT
+- [x] Release 0.2.0 : tag, release GitHub, dépôt APT
+
+## Phase 3 — 0.3.0 : enregistrer en direct, choisir les dossiers
+
+- [x] Enregistrement compressé en direct : file nommée pour mpv, relais en mémoire (512 Mo) sans jamais faire attendre mpv, ffmpeg H.264 (VA-API ou x264 ultrafast)
+- [x] Réglage « Manière d'enregistrer » (brut puis compressé, ou compressé en direct)
+- [x] Réunion image + son AAC en MP4 à l'arrêt, en quelques secondes
+- [x] Choix des dossiers des captures et des vidéos (sélecteur, retour au défaut)
+- [x] Essai réel en 1080p60 : 8 s → 1,5 Mo, image et son de même durée
+- [x] Tests unitaires, README, CHANGELOG, page de manuel, paquet
+- [ ] Release 0.3.0 : tag, release GitHub, dépôt APT
 
 ## Plus tard
 
-- [ ] Enregistrement compressé en direct, sans passer par le brut
-- [ ] Choix des dossiers de capture et d'enregistrement
+- [ ] Recaler le son pendant les très longs enregistrements (dérive des horloges)

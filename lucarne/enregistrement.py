@@ -11,6 +11,11 @@ Ces fichiers bruts sont gros (≈ 24 Go/h en 720×480, ≈ 70 Go/h en 1080p). Il
 une description JSON, puis sont compressés en H.264 + AAC dès la fin de l'enregistrement par ``lucarne --compresser``
 (module compression), lancé à part par systemd-run et passé par la file Gagarine en priorité « fond ».
 
+Enregistrement compressé en direct (réglage) : mpv écrit le MJPEG dans une file nommée au lieu d'un fichier ;
+Lucarne la vide sans jamais faire attendre mpv (réserve en mémoire, classe Relais) et la passe à ffmpeg, qui compresse
+en H.264 au fil de l'eau (VA-API, sinon x264 ultrafast). Le son reste en FLAC ; à l'arrêt, la « compression » se
+réduit à réunir image et son dans le MP4 (image copiée telle quelle), en quelques secondes.
+
 Calage du son : mpv remet l'horloge de la vidéo à zéro au début de l'enregistrement. Le son démarre donc d'abord et
 l'heure de son premier échantillon est gardée (horloge monotone, celle de GStreamer) ; le début de la vidéo est
 estimé au moment où mpv confirme l'enregistrement, moins un intervalle d'image. La compression coupe le début du son
@@ -21,10 +26,12 @@ from datetime import datetime
 import glob
 import json
 import os
+import queue
 import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 
 from gi.repository import GLib
@@ -35,6 +42,8 @@ MARGE_ARRET = 2 * GIO           # en dessous, l'enregistrement en cours s'arrêt
 PILOTES_VAAPI = {"i915", "xe", "amdgpu", "radeon"}
 DELAI_SON_MAX_S = 1.5           # sans premier échantillon de son après ce délai, la vidéo démarre quand même
 DELAI_REPONSE_MPV_S = 3
+RESERVE_MAX = 512 * 1024 ** 2   # MJPEG en attente de ffmpeg au-delà duquel l'enregistrement direct s'arrête
+DELAI_FIN_FFMPEG_S = 15         # après la fin de l'image, temps laissé à ffmpeg pour finir son fichier
 
 
 def _dossier_utilisateur(repertoire, secours):
@@ -42,12 +51,16 @@ def _dossier_utilisateur(repertoire, secours):
     return os.path.join(base, "Lucarne")
 
 
-def dossier_videos():
-    return _dossier_utilisateur(GLib.UserDirectory.DIRECTORY_VIDEOS, "~/Videos")
+def dossier_videos(choisi=""):
+    """Dossier des vidéos : celui choisi dans les réglages, sinon <Vidéos>/Lucarne."""
+    return os.path.expanduser(choisi) if choisi else _dossier_utilisateur(GLib.UserDirectory.DIRECTORY_VIDEOS,
+                                                                          "~/Videos")
 
 
-def dossier_images():
-    return _dossier_utilisateur(GLib.UserDirectory.DIRECTORY_PICTURES, "~/Pictures")
+def dossier_images(choisi=""):
+    """Dossier des captures : celui choisi dans les réglages, sinon <Images>/Lucarne."""
+    return os.path.expanduser(choisi) if choisi else _dossier_utilisateur(GLib.UserDirectory.DIRECTORY_PICTURES,
+                                                                          "~/Pictures")
 
 
 def nom_libre(dossier, instant, extensions, autres=()):
@@ -95,6 +108,7 @@ class Brut:
     son: str = ""               # FLAC ; vide sans son
     decalage_s: float = 0.0     # début de la vidéo moins début du son (positif : le son a commencé avant)
     erreur: str = ""            # rempli quand la compression a échoué : on ne la relance plus toute seule
+    video_compressee: bool = False  # vidéo déjà en H.264 (enregistrement direct) : elle est copiée telle quelle
 
     @property
     def sortie(self):
@@ -168,12 +182,31 @@ def commandes_compression(brut, rendu=None):
             argv += ["-c:a", "aac", "-b:a", "192k", "-shortest"]
         return argv + ["-movflags", "+faststart", "-f", "mp4", brut.sortie + ".part"]
 
+    if brut.video_compressee:
+        return [construire([], ["-c:v", "copy"])]
     commandes = []
     if rendu:
         commandes.append(construire(["-vaapi_device", rendu],
                                     ["-vf", "format=nv12,hwupload", "-c:v", "h264_vaapi", "-qp", "23"]))
     commandes.append(construire([], ["-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p"]))
     return commandes
+
+
+def commande_direct(sortie, rendu=None):
+    """ffmpeg qui compresse en direct le MJPEG copié par mpv (lu sur son entrée standard) vers sortie (.mkv).
+
+    Il tourne pendant l'enregistrement, donc hors de la file Gagarine : la puce graphique fait le travail (VA-API) ;
+    sans elle, x264 au plus rapide.
+    """
+    argv = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"]
+    if rendu:
+        argv += ["-vaapi_device", rendu]
+    argv += ["-f", "matroska", "-i", "pipe:0", "-map", "0:v:0"]
+    if rendu:
+        argv += ["-vf", "format=nv12,hwupload", "-c:v", "h264_vaapi", "-qp", "23"]
+    else:
+        argv += ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", "-pix_fmt", "yuv420p"]
+    return argv + ["-f", "matroska", sortie]
 
 
 def dans_la_file(argv, nom, gagarine=None):
@@ -212,11 +245,110 @@ def lancer_compression(brut, lanceur=None):
     return lignes[-1] if lignes else f"systemd-run a échoué (code {r.returncode})"
 
 
-def relancer_en_attente():
+def relancer_en_attente(dossiers):
     """Au lancement : relance la compression des enregistrements restés bruts (Lucarne ou le PC arrêtés avant la
     fin). Une compression déjà en cours n'est pas doublée : systemd-run refuse une unité qui existe déjà."""
-    for brut in en_attente(dossier_videos()):
-        lancer_compression(brut)
+    for dossier in dict.fromkeys(dossiers):
+        for brut in en_attente(dossier):
+            lancer_compression(brut)
+
+
+# --- Enregistrement direct : relais entre mpv et ffmpeg -----------------------------------------------------------
+
+class Relais:
+    """Vide la file nommée où mpv écrit le MJPEG et passe les données à ffmpeg, dans deux fils.
+
+    mpv n'attend jamais : ce qui n'est pas encore passé à ffmpeg reste en mémoire. Au-delà de RESERVE_MAX (ffmpeg
+    trop lent) ou si ffmpeg s'arrête, la suite est jetée et sur_probleme(texte) est appelé : l'enregistrement doit
+    s'arrêter. sur_fin(erreur) est appelé quand ffmpeg a fini son fichier. Rappels dans le fil GLib.
+    """
+
+    def __init__(self, fifo, argv, sur_probleme, sur_fin):
+        self.fifo = fifo
+        self._sur_probleme, self._sur_fin = sur_probleme, sur_fin
+        self._file = queue.Queue()
+        self._reserve = 0
+        self._verrou = threading.Lock()
+        self._probleme = ""
+        self.fini = False
+        self._ffmpeg = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+                                        stderr=subprocess.PIPE)
+        threading.Thread(target=self._lire, daemon=True).start()
+        threading.Thread(target=self._ecrire, daemon=True).start()
+
+    def _signaler(self, texte):
+        if not self._probleme:
+            self._probleme = texte
+            GLib.idle_add(self._sur_probleme, texte)
+
+    def _lire(self):
+        fd = os.open(self.fifo, os.O_RDONLY)        # attend que mpv ouvre la file (ou debloquer())
+        try:
+            while True:
+                morceau = os.read(fd, 1 << 20)
+                if not morceau:
+                    break
+                if self._probleme:
+                    continue                        # on vide quand même : mpv ne doit pas attendre
+                with self._verrou:
+                    self._reserve += len(morceau)
+                    trop = self._reserve > RESERVE_MAX
+                if trop:
+                    self._signaler("la compression ne suit pas")
+                    continue
+                self._file.put(morceau)
+        finally:
+            os.close(fd)
+            self._file.put(None)
+
+    def _ecrire(self):
+        casse = False
+        while True:
+            morceau = self._file.get()
+            if morceau is None:
+                break
+            with self._verrou:
+                self._reserve -= len(morceau)
+            if casse:
+                continue
+            try:
+                self._ffmpeg.stdin.write(morceau)
+            except OSError:
+                casse = True
+                self._signaler("ffmpeg s'est arrêté")
+        try:
+            self._ffmpeg.stdin.close()
+        except OSError:
+            pass
+        erreurs = self._ffmpeg.stderr.read().decode(errors="replace")
+        code = self._ffmpeg.wait()
+        lignes = [l for l in erreurs.splitlines() if l.strip()]
+        erreur = "" if code == 0 else (lignes[-1] if lignes else f"ffmpeg a échoué (code {code})")
+        GLib.idle_add(self._finir, erreur)
+
+    def _finir(self, erreur):
+        self.fini = True
+        try:
+            os.unlink(self.fifo)
+        except OSError:
+            pass
+        self._sur_fin(erreur)
+        return GLib.SOURCE_REMOVE
+
+    def debloquer(self):
+        """Si mpv n'a jamais ouvert la file, le fil de lecture attend encore : une ouverture en écriture le libère."""
+        try:
+            os.close(os.open(self.fifo, os.O_WRONLY | os.O_NONBLOCK))
+        except OSError:
+            pass
+
+    def tuer(self):
+        """Dernier recours : ffmpeg ne finit pas. Libère aussi le fil de lecture s'il attend encore mpv."""
+        if not self.fini:
+            self.debloquer()
+            if self._ffmpeg.poll() is None:
+                self._ffmpeg.kill()
+        return GLib.SOURCE_REMOVE
 
 
 # --- Enregistrement en cours ------------------------------------------------------------------------------------------
@@ -228,23 +360,28 @@ class Enregistreur:
     seulement si la compression n'a pas pu être lancée.
     """
 
-    def __init__(self, lecture, intervalle_image_s, sur_fin):
+    def __init__(self, lecture, intervalle_image_s, sur_fin, direct=False):
         self.lecture = lecture
+        self.direct = direct
+        self._relais = None
+        self._puis = None
+        self._fin_video_faite = False
         self._intervalle = intervalle_image_s
         self._sur_fin = sur_fin
         self.brut = None
         self.debut = None               # heure monotone du début, pour la durée affichée
         self.en_cours = False
         self.erreur_son = ""
+        self.erreur_direct = ""
         self._pipeline = None
         self._debut_son = None
         self._debut_video = None
         self._video_lancee = False
         self._fini = False
 
-    def demarrer(self, source):
+    def demarrer(self, source, dossier=None):
         """Démarre le son puis l'image. Lève OSError si le dossier est inaccessible ou le disque trop plein."""
-        dossier = dossier_videos()
+        dossier = dossier or dossier_videos()
         dossier_brut = os.path.join(dossier, "brut")
         os.makedirs(dossier_brut, exist_ok=True)
         libre = place_libre(dossier_brut)
@@ -253,6 +390,18 @@ class Enregistreur:
         nom = nom_libre(dossier, datetime.now(), [".mp4"], [(dossier_brut, ".mkv"), (dossier_brut, ".json")])
         self.brut = Brut(nom, dossier, os.path.join(dossier_brut, nom + ".mkv"),
                          os.path.join(dossier_brut, nom + ".flac") if source else "")
+        if self.direct:
+            self.brut.video_compressee = True
+            fifo = os.path.join(GLib.get_user_runtime_dir(), f"lucarne-{os.getpid()}-{int(time.time())}.mkv")
+            if os.path.exists(fifo):
+                os.unlink(fifo)
+            os.mkfifo(fifo, 0o600)
+            try:
+                self._relais = Relais(fifo, commande_direct(self.brut.video, trouver_rendu()), self._probleme,
+                                      self._relais_fini)
+            except OSError:
+                os.unlink(fifo)
+                raise
         self.en_cours = True
         self.debut = time.monotonic()
         if source and self._demarrer_son(source):
@@ -276,23 +425,45 @@ class Enregistreur:
             if puis:
                 puis()
             return
-        fait = {"v": False}
+        self._puis = puis
 
-        def terminer(*_):
-            if fait["v"]:
-                return GLib.SOURCE_REMOVE
-            fait["v"] = True
-            self._terminer()
-            if puis:
-                puis()
+        def fin(*_):
+            self._fin_video()
             return GLib.SOURCE_REMOVE
-        self.lecture.commande("set_property", "stream-record", "", rappel=terminer)
-        GLib.timeout_add_seconds(DELAI_REPONSE_MPV_S, terminer)
+        self.lecture.commande("set_property", "stream-record", "", rappel=fin)
+        GLib.timeout_add_seconds(DELAI_REPONSE_MPV_S, fin)
 
     def mpv_termine(self):
         """mpv s'est arrêté : il a déjà fermé le fichier vidéo."""
         if self.en_cours:
+            self._fin_video()
+
+    def _fin_video(self):
+        """mpv a fini d'écrire l'image. En direct, on attend encore que ffmpeg ferme son fichier."""
+        if self._fin_video_faite:
+            return
+        self._fin_video_faite = True
+        self.en_cours = False
+        if self._relais is not None and not self._relais.fini:
+            self._relais.debloquer()
+            GLib.timeout_add_seconds(DELAI_FIN_FFMPEG_S, self._relais.tuer)
+            return                              # suite dans _relais_fini
+        self._terminer()
+
+    def _probleme(self, texte):
+        """Le relais ne peut plus suivre : on arrête l'enregistrement (l'image continue)."""
+        if self.en_cours:
+            self.erreur_direct = texte
+            self.arreter(self._puis)
+        return GLib.SOURCE_REMOVE
+
+    def _relais_fini(self, erreur):
+        if erreur:
+            self.erreur_direct = erreur
+        if self._fin_video_faite:
             self._terminer()
+        elif self.en_cours:                     # ffmpeg s'est arrêté seul
+            self.arreter(self._puis)
 
     # --- Son ---
 
@@ -352,6 +523,7 @@ class Enregistreur:
             return GLib.SOURCE_REMOVE
         self._video_lancee = True
         envoi = time.monotonic()
+        cible = self._relais.fifo if self._relais else self.brut.video
 
         def reponse(erreur, _donnee):
             if erreur:
@@ -359,7 +531,7 @@ class Enregistreur:
                 return
             # mpv copie le premier paquet reçu après la commande ; il a été pris par la carte une image plus tôt
             self._debut_video = (envoi + time.monotonic()) / 2 - self._intervalle
-        self.lecture.commande("set_property", "stream-record", self.brut.video, rappel=reponse)
+        self.lecture.commande("set_property", "stream-record", cible, rappel=reponse)
         return GLib.SOURCE_REMOVE
 
     # --- Fin ---
@@ -369,17 +541,33 @@ class Enregistreur:
             return
         self._fini = True
         self.en_cours = False
+        self._fin_video_faite = True
+        if self._relais is not None:
+            self._relais.debloquer()
+            GLib.timeout_add_seconds(DELAI_FIN_FFMPEG_S, self._relais.tuer)
         self._arreter_son()
         for chemin in (self.brut.video, self.brut.son):
             if chemin and os.path.exists(chemin):
                 os.unlink(chemin)
         self._sur_fin(None, erreur)
+        self._appeler_puis()
+
+    def _appeler_puis(self):
+        puis, self._puis = self._puis, None
+        if puis:
+            puis()
 
     def _terminer(self):
         if self._fini:
             return
         self._fini = True
         self.en_cours = False
+        try:
+            self._conclure()
+        finally:
+            self._appeler_puis()
+
+    def _conclure(self):
         self._arreter_son()
         brut = self.brut
         if not (os.path.exists(brut.video) and os.path.getsize(brut.video) > 0):

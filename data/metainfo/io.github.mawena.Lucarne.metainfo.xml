@@ -31,6 +31,11 @@
     <category>Video</category>
   </categories>
   <releases>
+    <release version="0.3.0" date="2026-11-25">
+      <description>
+        <p>Enregistrement compressé en direct (2 à 4 Go par heure au lieu de 24 à 70) et choix des dossiers des captures et des vidéos.</p>
+      </description>
+    </release>
     <release version="0.2.0" date="2026-11-25">
       <description>
         <p>Capture d’image (touche S), enregistrement vidéo avec son compressé en arrière-plan (touche R), mesure du retard réel avec une mire.</p>

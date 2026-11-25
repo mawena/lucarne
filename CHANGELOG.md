@@ -3,6 +3,21 @@
 Toutes les modifications notables de Lucarne sont consignées ici.
 Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versions : [SemVer](https://semver.org/lang/fr/).
 
+## [0.3.0] - 2026-11-25
+
+### Ajouté
+- Réglage **Manière d'enregistrer** : « Brut, puis compressé » (comportement 0.2.0, par défaut) ou « Compressé en
+  direct ». En direct, mpv écrit le MJPEG dans une file nommée, Lucarne la vide dans deux fils sans jamais faire
+  attendre mpv (réserve en mémoire jusqu'à 512 Mo ; au-delà l'enregistrement s'arrête mais l'image continue) et la
+  passe à ffmpeg, qui compresse en H.264 en direct (VA-API, sinon x264 `ultrafast`), hors file Gagarine car en temps
+  réel. Le son reste en FLAC ; à l'arrêt, image copiée telle quelle et son AAC réunis en MP4 en quelques secondes
+  (par la file Gagarine). Essai réel : 8 s de 1080p60 → 1,5 Mo, image et son de même durée. Environ 2 à 4 Go/h au
+  lieu de 24 à 70 Go/h.
+- Choix des dossiers : **Dossier des captures** et **Dossier des vidéos**, bouton **Changer…** (sélecteur de
+  dossier) et bouton de retour au dossier par défaut.
+- Réglages `enregistrement_direct`, `dossier_images`, `dossier_videos` (vide = `<Images>/Lucarne`,
+  `<Vidéos>/Lucarne`).
+
 ## [0.2.0] - 2026-11-25
 
 ### Ajouté
@@ -39,5 +54,6 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versions : [S
 - Réglages gardés dans `~/.config/lucarne/reglages.json`.
 - Paquet `.deb` (lanceur de bureau, icônes, metainfo).
 
+[0.3.0]: https://github.com/mawena/lucarne/releases/tag/v0.3.0
 [0.2.0]: https://github.com/mawena/lucarne/releases/tag/v0.2.0
 [0.1.0]: https://github.com/mawena/lucarne/releases/tag/v0.1.0

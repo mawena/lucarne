@@ -1,3 +1,12 @@
+lucarne (0.3.0) unstable; urgency=medium
+
+  * Enregistrement compressé en direct (réglage « Manière d'enregistrer ») :
+    H.264 par ffmpeg pendant l'enregistrement, environ 2 à 4 Go par heure
+    au lieu de 24 à 70 Go ; le comportement brut reste le défaut.
+  * Choix des dossiers des captures et des vidéos.
+
+ -- mawena <gamligocharles@gmail.com>  Wed, 25 Nov 2026 14:00:00 +0100
+
 lucarne (0.2.0) unstable; urgency=medium
 
   * Capture d'image (touche S) en PNG dans ~/Images/Lucarne.

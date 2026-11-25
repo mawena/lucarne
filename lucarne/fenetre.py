@@ -81,7 +81,7 @@ class Fenetre(Adw.ApplicationWindow):
         self._rafraichir_cartes()
         self._rafraichir_son()
         self.connect("close-request", self._fermeture)
-        GLib.idle_add(lambda: relancer_en_attente() and False)
+        GLib.idle_add(lambda: relancer_en_attente([dossier_videos(), self._dossier_videos()]) and False)
 
     # --- Construction -------------------------------------------------------------------------------------------
 
@@ -178,7 +178,7 @@ class Fenetre(Adw.ApplicationWindow):
         prises = Adw.PreferencesGroup(title="Capture et enregistrement",
                                       description="Pendant la lecture. Dans l'image : S pour une capture, R pour "
                                                   "enregistrer ou arrêter.")
-        self.ligne_capture = Adw.ActionRow(title="Capture d'image", subtitle=f"PNG dans {_court(dossier_images())}")
+        self.ligne_capture = Adw.ActionRow(title="Capture d'image", subtitle=self._texte_capture())
         self.bouton_capture = Gtk.Button(label="Capturer", valign=Gtk.Align.CENTER)
         self.bouton_capture.connect("clicked", self._capturer)
         self.ligne_capture.add_suffix(self.bouton_capture)
@@ -189,13 +189,76 @@ class Fenetre(Adw.ApplicationWindow):
         self.bouton_enr.connect("clicked", self._enregistrer_ou_arreter)
         self.ligne_enr.add_suffix(self.bouton_enr)
         prises.add(self.ligne_enr)
+
+        self.ligne_maniere = Adw.ComboRow(title="Manière d'enregistrer", use_subtitle=True, model=Gtk.StringList.new([
+            "Brut, puis compressé : rien ne tourne pendant l'enregistrement, gros fichier temporaire",
+            "Compressé en direct : petit fichier, la puce graphique compresse pendant l'enregistrement"]))
+        self.ligne_maniere.set_selected(1 if self.reglages.enregistrement_direct else 0)
+        self.ligne_maniere.connect("notify::selected", self._maniere_choisie)
+        prises.add(self.ligne_maniere)
+
+        self.ligne_dossier_images = self._ligne_dossier("Dossier des captures", "dossier_images", dossier_images)
+        prises.add(self.ligne_dossier_images)
+        self.ligne_dossier_videos = self._ligne_dossier("Dossier des vidéos", "dossier_videos", dossier_videos)
+        prises.add(self.ligne_dossier_videos)
         page.add(prises)
         return page
 
-    @staticmethod
-    def _texte_enr_repos():
+    def _dossier_images(self):
+        return dossier_images(self.reglages.dossier_images)
+
+    def _dossier_videos(self):
+        return dossier_videos(self.reglages.dossier_videos)
+
+    def _texte_capture(self):
+        return f"PNG dans {_court(self._dossier_images())}"
+
+    def _texte_enr_repos(self):
+        if self.reglages.enregistrement_direct:
+            return f"Compressé en direct (≈ 2 à 4 Go/h), MP4 dans {_court(self._dossier_videos())}"
         return (f"Brut pendant l'enregistrement (≈ 24 Go/h en 720 × 480, 70 Go/h en 1080p), puis compressé en MP4 "
-                f"dans {_court(dossier_videos())} par la file Gagarine")
+                f"dans {_court(self._dossier_videos())} par la file Gagarine")
+
+    def _ligne_dossier(self, titre, champ, par_defaut):
+        """Rangée d'un dossier : chemin en sous-titre, « Changer… » et retour au dossier par défaut."""
+        ligne = Adw.ActionRow(title=titre, subtitle=_court(par_defaut(getattr(self.reglages, champ))))
+        defaut = Gtk.Button(icon_name="edit-undo-symbolic", valign=Gtk.Align.CENTER, tooltip_text="Dossier par défaut")
+        defaut.add_css_class("flat")
+        defaut.set_visible(bool(getattr(self.reglages, champ)))
+        changer = Gtk.Button(label="Changer…", valign=Gtk.Align.CENTER)
+
+        def appliquer(chemin):
+            setattr(self.reglages, champ, chemin)
+            self._enregistrer()
+            ligne.set_subtitle(_court(par_defaut(chemin)))
+            defaut.set_visible(bool(chemin))
+            self.ligne_capture.set_subtitle(self._texte_capture())
+            self._mettre_a_jour_boutons()
+
+        def choisi(dialogue, resultat):
+            try:
+                dossier = dialogue.select_folder_finish(resultat)
+            except GLib.Error:
+                return                              # annulé
+            if dossier is not None and dossier.get_path():
+                appliquer(dossier.get_path())
+
+        def ouvrir(*_):
+            dialogue = Gtk.FileDialog(title=titre, modal=True)
+            actuel = par_defaut(getattr(self.reglages, champ))
+            if os.path.isdir(actuel):
+                dialogue.set_initial_folder(Gio.File.new_for_path(actuel))
+            dialogue.select_folder(self, None, choisi)
+        changer.connect("clicked", ouvrir)
+        defaut.connect("clicked", lambda *_: appliquer(""))
+        ligne.add_suffix(defaut)
+        ligne.add_suffix(changer)
+        return ligne
+
+    def _maniere_choisie(self, *_):
+        self.reglages.enregistrement_direct = self.ligne_maniere.get_selected() == 1
+        self._enregistrer()
+        self._mettre_a_jour_boutons()
 
     # --- Surveillance des appareils -----------------------------------------------------------------------------
 
@@ -485,6 +548,8 @@ class Fenetre(Adw.ApplicationWindow):
         self.bouton_retard.set_sensitive(bool(self.cartes) and not en_cours and self._test is None)
         self.bouton_capture.set_sensitive(en_cours)
         self.bouton_enr.set_sensitive(en_cours)
+        for ligne in (self.ligne_maniere, self.ligne_dossier_videos):
+            ligne.set_sensitive(not enregistre)
         self.bouton_enr.set_label("Arrêter l'enregistrement" if enregistre else "Enregistrer")
         (self.bouton_enr.add_css_class if enregistre else self.bouton_enr.remove_css_class)("destructive-action")
         if not enregistre:
@@ -501,7 +566,7 @@ class Fenetre(Adw.ApplicationWindow):
     def _capturer(self, *_):
         if not self.lecture.en_cours:
             return
-        dossier = dossier_images()
+        dossier = self._dossier_images()
         try:
             os.makedirs(dossier, exist_ok=True)
         except OSError as e:
@@ -527,9 +592,10 @@ class Fenetre(Adw.ApplicationWindow):
         if not self.lecture.en_cours or self._mode_lecture is None:
             return
         source = self.source()
-        self.enregistreur = Enregistreur(self.lecture, 1 / float(self._mode_lecture.ips), self._enregistrement_fini)
+        self.enregistreur = Enregistreur(self.lecture, 1 / float(self._mode_lecture.ips), self._enregistrement_fini,
+                                         direct=self.reglages.enregistrement_direct)
         try:
-            self.enregistreur.demarrer(source.nom if source else None)
+            self.enregistreur.demarrer(source.nom if source else None, self._dossier_videos())
         except OSError as e:
             self.enregistreur = None
             self.annoncer(f"Enregistrement impossible : {e.strerror or e}")
@@ -554,6 +620,8 @@ class Fenetre(Adw.ApplicationWindow):
 
     def _enregistrement_fini(self, brut, erreur):
         enr = self.enregistreur
+        if enr is not None and enr.erreur_direct:
+            self.annoncer(f"Compression en direct arrêtée : {enr.erreur_direct}")
         if enr is not None and enr.erreur_son:
             self.annoncer(f"Son non enregistré : {enr.erreur_son}")
         if brut is None:

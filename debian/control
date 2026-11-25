@@ -41,3 +41,8 @@ Description: low-latency viewer for USB HDMI capture cards
  with its sound: the raw MJPEG stream and the sound are saved while playing,
  then compressed to H.264 + AAC with ffmpeg in the background. A pattern
  shown on an HDMI output wired to the card measures the real end-to-end delay.
+ .
+ Recording can also be compressed live: the image is encoded to H.264 while
+ playing (2 to 4 GB per hour instead of 24 to 70 GB of raw video) and the
+ MP4 is ready a few seconds after stopping. The folders of the captures and
+ of the videos can be chosen.
