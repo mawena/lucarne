@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Lucarne
+GenericName=Carte de capture
+Comment=Affiche l’image d’une carte de capture avec le moins de retard possible, et envoie son son où tu veux
+Comment[fr]=Affiche l’image d’une carte de capture avec le moins de retard possible, et envoie son son où tu veux
+Exec=lucarne
+Icon=io.github.mawena.Lucarne
+Terminal=false
+Categories=GNOME;GTK;AudioVideo;Video;Player;
+Keywords=capture;HDMI;USB;vidéo;console;latence;son;mpv;
+StartupNotify=true
+StartupWMClass=io.github.mawena.Lucarne
