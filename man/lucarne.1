@@ -1,0 +1,34 @@
+.TH LUCARNE 1 "novembre 2026" "lucarne 0.1.0" "Commandes utilisateur"
+.SH NOM
+lucarne \- l'image d'une carte de capture avec le moins de retard possible, et son son
+.SH SYNOPSIS
+.B lucarne
+.RB [ \-\-version ]
+.SH DESCRIPTION
+.B lucarne
+ouvre une fenêtre GTK pour regarder une carte de capture HDMI\-USB (MS2109 et semblables).
+L'image passe par
+.BR mpv (1)
+réglé pour une source en direct (sans cache ni attente) et le son va directement de la carte à la sortie
+choisie par
+.BR pw\-loopback (1).
+.PP
+Le bouton
+.B Tester
+mesure chaque mode de la carte (cadence réelle, attente, décodage) ; le mode
+.B Automatique
+prend ensuite le plus rapide.
+.SH OPTIONS
+.TP
+.B \-\-version
+Affiche la version et quitte.
+.SH FICHIERS
+.TP
+.I ~/.config/lucarne/reglages.json
+Réglages (carte, mode, sortie, tampon du son, plein écran) et résultats du test de chaque carte.
+.SH VOIR AUSSI
+.BR mpv (1),
+.BR pw\-loopback (1),
+.BR pactl (1)
+.SH AUTEUR
+mawena \- https://github.com/mawena/lucarne

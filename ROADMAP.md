@@ -13,7 +13,7 @@ envoie son son vers la sortie audio choisie (casque Bluetooth, haut-parleurs, do
 - [x] Réglages gardés entre deux lancements (carte, mode, sortie, tampon du son, plein écran)
 - [x] Fenêtre GTK 4 / libadwaita : carte, mode, son, sortie, bouton Regarder/Arrêter, alerte Bluetooth
 - [x] Branchement et débranchement suivis en direct (cartes et sorties audio)
-- [ ] Paquet `.deb` (lanceur, icône, metainfo), lintian propre, installé sur le poste
+- [x] Paquet `.deb` (lanceur, icône, metainfo), lintian propre, installé sur le poste
 - [ ] Release 0.1.0 : tag, release GitHub, dépôt APT apt.mawena.cloud
 
 ## Plus tard
