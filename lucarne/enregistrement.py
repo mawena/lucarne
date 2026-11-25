@@ -4,7 +4,8 @@ Pendant l'enregistrement, rien ne doit retarder l'image :
 
 - l'image est copiée telle que la carte l'envoie (MJPEG) par mpv lui-même (propriété ``stream-record``), sans
   décodage ni compression de plus ;
-- le son de la carte est enregistré en FLAC par un petit pipeline GStreamer (pulsesrc), à côté du renvoi vers le
+- le son de la carte est enregistré en FLAC (dans du Matroska, avec l'heure de chaque morceau) par un petit
+  pipeline GStreamer (pulsesrc), à côté du renvoi vers le
   casque.
 
 Ces fichiers bruts sont gros (≈ 24 Go/h en 720×480, ≈ 70 Go/h en 1080p). Ils vont dans <Vidéos>/Lucarne/brut avec
@@ -19,7 +20,8 @@ réduit à réunir image et son dans le MP4 (image copiée telle quelle), en que
 Calage du son : mpv remet l'horloge de la vidéo à zéro au début de l'enregistrement. Le son démarre donc d'abord et
 l'heure de son premier échantillon est gardée (horloge monotone, celle de GStreamer) ; le début de la vidéo est
 estimé au moment où mpv confirme l'enregistrement, moins un intervalle d'image. La compression coupe le début du son
-d'autant (decalage_s).
+d'autant (decalage_s), puis recale tout le son sur ses horodatages (RECALAGE_SON) : sur un long enregistrement, ni
+la dérive des horloges ni des échantillons perdus ne décalent le son.
 """
 from dataclasses import dataclass, asdict
 from datetime import datetime
@@ -153,13 +155,15 @@ def trouver_rendu(racine="/sys/class/drm"):
     return None
 
 
-def filtre_son(decalage_s):
-    """Filtre FFmpeg qui cale le son sur l'image : coupe son début, ou le retarde s'il a commencé après."""
-    if decalage_s >= 0.0005:
-        return f"atrim=start={decalage_s:.3f},asetpts=PTS-STARTPTS"
-    if decalage_s <= -0.0005:
-        return f"adelay={round(-decalage_s * 1000)}:all=1"
-    return None
+# Recalage du son sur ses horodatages : les trous (échantillons perdus quand le PC est chargé) sont bouchés et la
+# dérive entre l'horloge de la carte et celle du PC est rattrapée en étirant ou serrant le son d'au plus 1000
+# échantillons par seconde (≈ 2 %, inaudible). first_pts=0 coupe ou complète le début pour qu'il tombe sur l'image.
+RECALAGE_SON = "aresample=async=1000:first_pts=0"
+
+
+def entree_son(son, decalage_s):
+    """Entrée ffmpeg du son, décalée pour tomber sur l'image (decalage_s positif : le son a commencé avant)."""
+    return ["-itsoffset", f"{-decalage_s:.3f}", "-i", son]
 
 
 def commandes_compression(brut, rendu=None):
@@ -170,16 +174,13 @@ def commandes_compression(brut, rendu=None):
     def construire(avant_entrees, options_video):
         argv = ["ffmpeg", "-hide_banner", "-nostdin", "-loglevel", "error", "-y", *avant_entrees, "-i", brut.video]
         if brut.son:
-            argv += ["-i", brut.son]
+            argv += entree_son(brut.son, brut.decalage_s)
         argv += ["-map", "0:v:0"]
         if brut.son:
             argv += ["-map", "1:a:0"]
         argv += options_video
         if brut.son:
-            filtre = filtre_son(brut.decalage_s)
-            if filtre:
-                argv += ["-af", filtre]
-            argv += ["-c:a", "aac", "-b:a", "192k", "-shortest"]
+            argv += ["-af", RECALAGE_SON, "-c:a", "aac", "-b:a", "192k", "-shortest"]
         return argv + ["-movflags", "+faststart", "-f", "mp4", brut.sortie + ".part"]
 
     if brut.video_compressee:
@@ -389,7 +390,7 @@ class Enregistreur:
             raise OSError(f"il ne reste que {texte_taille(libre)} sur le disque")
         nom = nom_libre(dossier, datetime.now(), [".mp4"], [(dossier_brut, ".mkv"), (dossier_brut, ".json")])
         self.brut = Brut(nom, dossier, os.path.join(dossier_brut, nom + ".mkv"),
-                         os.path.join(dossier_brut, nom + ".flac") if source else "")
+                         os.path.join(dossier_brut, nom + ".mka") if source else "")
         if self.direct:
             self.brut.video_compressee = True
             fifo = os.path.join(GLib.get_user_runtime_dir(), f"lucarne-{os.getpid()}-{int(time.time())}.mkv")
@@ -470,7 +471,9 @@ class Enregistreur:
     def _demarrer_son(self, source):
         from gi.repository import Gst
         try:
+            # FLAC dans du Matroska : chaque morceau garde son heure, ce qui permet le recalage (RECALAGE_SON)
             pipeline = Gst.parse_launch("pulsesrc name=src ! audioconvert ! audio/x-raw,format=S16LE ! flacenc ! "
+                                        "matroskamux ! "
                                         "filesink name=fin")
         except GLib.Error as e:
             self.erreur_son = e.message

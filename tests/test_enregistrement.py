@@ -4,7 +4,7 @@ import unittest
 from datetime import datetime
 
 from lucarne.enregistrement import (Brut, commande_lancement, commandes_compression, dans_la_file, en_attente,
-                                    filtre_son, nom_libre, texte_duree, texte_taille, trouver_rendu)
+                                    RECALAGE_SON, entree_son, nom_libre, texte_duree, texte_taille, trouver_rendu)
 
 INSTANT = datetime(2026, 11, 25, 8, 19, 0)
 NOM = "Lucarne 2026-11-25 08-19-00"
@@ -115,21 +115,20 @@ class TrouverRendu(unittest.TestCase):
             self.assertIsNone(trouver_rendu(d))
 
 
-class FiltreSon(unittest.TestCase):
-    def test_positif_coupe_le_debut(self):
-        self.assertEqual(filtre_son(0.25), "atrim=start=0.250,asetpts=PTS-STARTPTS")
+class EntreeSon(unittest.TestCase):
+    def test_son_commence_avant_l_image(self):
+        self.assertEqual(entree_son("s.mka", 0.25), ["-itsoffset", "-0.250", "-i", "s.mka"])
 
-    def test_negatif_retarde(self):
-        self.assertEqual(filtre_son(-0.1204), "adelay=120:all=1")
+    def test_son_commence_apres(self):
+        self.assertEqual(entree_son("s.mka", -0.1204), ["-itsoffset", "0.120", "-i", "s.mka"])
 
-    def test_nul(self):
-        self.assertIsNone(filtre_son(0))
-        self.assertIsNone(filtre_son(0.0001))
-        self.assertIsNone(filtre_son(-0.0001))
+    def test_recalage_sur_les_horodatages(self):
+        self.assertIn("async=", RECALAGE_SON)
+        self.assertIn("first_pts=0", RECALAGE_SON)
 
 
 def brut_exemple(son=True, decalage=0.2):
-    return Brut(NOM, "/v/Lucarne", "/v/Lucarne/brut/a.mkv", "/v/Lucarne/brut/a.flac" if son else "", decalage)
+    return Brut(NOM, "/v/Lucarne", "/v/Lucarne/brut/a.mkv", "/v/Lucarne/brut/a.mka" if son else "", decalage)
 
 
 class CommandesCompression(unittest.TestCase):
@@ -155,10 +154,11 @@ class CommandesCompression(unittest.TestCase):
             self.assertNotIn("-shortest", argv)
             self.assertNotIn("-af", argv)
 
-    def test_filtre_son_applique(self):
+    def test_son_decale_et_recale(self):
         argv = commandes_compression(brut_exemple(decalage=0.2))[0]
-        self.assertEqual(argv[argv.index("-af") + 1], "atrim=start=0.200,asetpts=PTS-STARTPTS")
-        self.assertNotIn("-af", commandes_compression(brut_exemple(decalage=0))[0])
+        self.assertEqual(argv[argv.index("-itsoffset") + 1], "-0.200")
+        self.assertLess(argv.index("-itsoffset"), argv.index("/v/Lucarne/brut/a.mka"))
+        self.assertEqual(argv[argv.index("-af") + 1], RECALAGE_SON)
 
 
 class DansLaFile(unittest.TestCase):

@@ -1,3 +1,11 @@
+lucarne (0.3.1) unstable; urgency=medium
+
+  * Son recalé sur ses horodatages à la compression (FLAC dans du Matroska,
+    aresample async) : ni la dérive des horloges ni des échantillons perdus
+    ne décalent le son sur les longs enregistrements.
+
+ -- mawena <gamligocharles@gmail.com>  Wed, 25 Nov 2026 15:00:00 +0100
+
 lucarne (0.3.0) unstable; urgency=medium
 
   * Enregistrement compressé en direct (réglage « Manière d'enregistrer ») :
