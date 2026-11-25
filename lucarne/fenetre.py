@@ -1,21 +1,53 @@
-"""Fenêtre de Lucarne : choix de la carte, du mode, du son et de la sortie ; bouton Regarder / Arrêter."""
+"""Fenêtre de Lucarne : choix de la carte, du mode, du son et de la sortie ; bouton Regarder / Arrêter.
+
+Pendant la lecture : capture d'image et enregistrement (boutons, ou touches S et R dans l'image). Hors lecture :
+test de vitesse et mesure du retard réel avec la mire.
+"""
+from datetime import datetime
+import os
+import re
 import threading
+import time
 
 import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
-from gi.repository import Adw, Gio, GLib, Gst, Gtk  # noqa: E402
+from gi.repository import Adw, Gdk, Gio, GLib, Gst, Gtk  # noqa: E402
 
 from . import appareils  # noqa: E402
 from .commandes import TAMPON_SON_MIN, TAMPON_SON_MAX
 from .config import Reglages, identifiant_carte
+from .enregistrement import (MARGE_ARRET, Enregistreur, dossier_images, dossier_videos, nom_libre, place_libre,
+                             relancer_en_attente, texte_duree, texte_taille)
 from .lecture import Lecture
 from .mesure import Resultat, choisir, mesurer_mode, modes_a_tester
 from .modes import mode_depuis_cle, mode_par_defaut
+from .retard import ResultatRetard
 
 DELAI_RAFRAICHIR_MS = 300
 RETARD_BLUETOOTH = "Sortie Bluetooth : le son arrive environ 200 ms après l'image."
+ECRAN_CARTE = re.compile(r"2109|MS21|MACROSILICON|capture", re.IGNORECASE)   # écran « carte de capture » probable
+
+
+def _court(chemin):
+    maison = os.path.expanduser("~")
+    return "~" + chemin[len(maison):] if chemin.startswith(maison + os.sep) else chemin
+
+
+def _nom_ecran(ecran):
+    modele = " ".join(x for x in (ecran.get_manufacturer(), ecran.get_model()) if x)
+    g = ecran.get_geometry()
+    taille = f"{g.width} × {g.height}"
+    return f"{ecran.get_connector() or 'Écran'} — {modele} ({taille})" if modele else \
+        f"{ecran.get_connector() or 'Écran'} ({taille})"
+
+
+def _ouvrir(chemin):
+    try:
+        Gio.AppInfo.launch_default_for_uri(Gio.File.new_for_path(chemin).get_uri(), None)
+    except GLib.Error:
+        pass
 
 
 def _texte_latence(resultat):
@@ -36,14 +68,20 @@ class Fenetre(Adw.ApplicationWindow):
         self._maj = False               # vrai pendant qu'on remplit les listes : on ignore leurs signaux
         self._rafraichir_id = {}
         self._test = None               # (fil, drapeau d'arrêt) pendant un test
-        self.lecture = Lecture(self._lecture_finie, self._son_perdu)
+        self._mesure = None             # MesureRetard en cours
+        self.enregistreur = None
+        self._mode_lecture = None
+        self.ecrans = []
+        self.lecture = Lecture(self._lecture_finie, self._son_perdu, self._touche)
 
         self._construire()
         self._surveiller_cartes()
         self._surveiller_son()
+        self._surveiller_ecrans()
         self._rafraichir_cartes()
         self._rafraichir_son()
         self.connect("close-request", self._fermeture)
+        GLib.idle_add(lambda: relancer_en_attente() and False)
 
     # --- Construction -------------------------------------------------------------------------------------------
 
@@ -97,6 +135,22 @@ class Fenetre(Adw.ApplicationWindow):
         self.ligne_test.add_suffix(self.bouton_test)
         image.add(self.ligne_test)
 
+        self.ligne_retard = Adw.ExpanderRow(title="Retard réel")
+        self.ligne_ecran = Adw.ComboRow(title="Écran branché sur la carte", model=Gtk.StringList(),
+                                        use_subtitle=True)
+        self.ligne_ecran.connect("notify::selected", self._ecran_choisi)
+        self.ligne_retard.add_row(self.ligne_ecran)
+        mire = Adw.ActionRow(title="Mire par câble",
+                             subtitle="Branche une sortie HDMI du PC sur l'entrée de la carte : un carré y clignote "
+                                      "une dizaine de secondes, puis le retard s'affiche.")
+        self.attente_retard = Gtk.Spinner(visible=False)
+        mire.add_suffix(self.attente_retard)
+        self.bouton_retard = Gtk.Button(label="Mesurer", valign=Gtk.Align.CENTER)
+        self.bouton_retard.connect("clicked", self._mesurer_ou_annuler)
+        mire.add_suffix(self.bouton_retard)
+        self.ligne_retard.add_row(mire)
+        image.add(self.ligne_retard)
+
         self.ligne_plein = Adw.SwitchRow(title="Plein écran au lancement",
                                          subtitle="F ou double-clic dans l'image pour basculer",
                                          active=self.reglages.plein_ecran)
@@ -120,7 +174,28 @@ class Fenetre(Adw.ApplicationWindow):
         self.ligne_tampon.connect("notify::value", self._tampon_choisi)
         son.add(self.ligne_tampon)
         page.add(son)
+
+        prises = Adw.PreferencesGroup(title="Capture et enregistrement",
+                                      description="Pendant la lecture. Dans l'image : S pour une capture, R pour "
+                                                  "enregistrer ou arrêter.")
+        self.ligne_capture = Adw.ActionRow(title="Capture d'image", subtitle=f"PNG dans {_court(dossier_images())}")
+        self.bouton_capture = Gtk.Button(label="Capturer", valign=Gtk.Align.CENTER)
+        self.bouton_capture.connect("clicked", self._capturer)
+        self.ligne_capture.add_suffix(self.bouton_capture)
+        prises.add(self.ligne_capture)
+
+        self.ligne_enr = Adw.ActionRow(title="Enregistrement", subtitle=self._texte_enr_repos())
+        self.bouton_enr = Gtk.Button(label="Enregistrer", valign=Gtk.Align.CENTER)
+        self.bouton_enr.connect("clicked", self._enregistrer_ou_arreter)
+        self.ligne_enr.add_suffix(self.bouton_enr)
+        prises.add(self.ligne_enr)
+        page.add(prises)
         return page
+
+    @staticmethod
+    def _texte_enr_repos():
+        return (f"Brut pendant l'enregistrement (≈ 24 Go/h en 720 × 480, 70 Go/h en 1080p), puis compressé en MP4 "
+                f"dans {_court(dossier_videos())} par la file Gagarine")
 
     # --- Surveillance des appareils -----------------------------------------------------------------------------
 
@@ -167,6 +242,33 @@ class Fenetre(Adw.ApplicationWindow):
             fonction()
             return GLib.SOURCE_REMOVE
         self._rafraichir_id[nom] = GLib.timeout_add(DELAI_RAFRAICHIR_MS, lancer)
+
+    def _surveiller_ecrans(self):
+        self._modele_ecrans = Gdk.Display.get_default().get_monitors()
+        self._modele_ecrans.connect("items-changed", lambda *_: self._plus_tard("ecrans", self._rafraichir_ecrans))
+        self._rafraichir_ecrans()
+
+    def _ecran_fenetre(self):
+        surface = self.get_surface()
+        return Gdk.Display.get_default().get_monitor_at_surface(surface) if surface else None
+
+    def _rafraichir_ecrans(self):
+        self.ecrans = [self._modele_ecrans.get_item(i) for i in range(self._modele_ecrans.get_n_items())]
+        index = next((i for i, e in enumerate(self.ecrans) if e.get_connector() == self.reglages.ecran_mire), None)
+        if index is None:
+            index = next((i for i, e in enumerate(self.ecrans) if ECRAN_CARTE.search(_nom_ecran(e))), None)
+        if index is None:
+            ici = self._ecran_fenetre()
+            index = next((i for i, e in enumerate(self.ecrans) if e != ici), 0)
+        self._maj = True
+        self._remplir(self.ligne_ecran, [_nom_ecran(e) for e in self.ecrans], index)
+        self._maj = False
+
+    def _ecran_choisi(self, *_):
+        i = self.ligne_ecran.get_selected()
+        if not self._maj and 0 <= i < len(self.ecrans):
+            self.reglages.ecran_mire = self.ecrans[i].get_connector() or ""
+            self._enregistrer()
 
     # --- Listes ---------------------------------------------------------------------------------------------------
 
@@ -274,6 +376,7 @@ class Fenetre(Adw.ApplicationWindow):
         self._maj = True
         self._remplir_sources()
         self._maj = False
+        self._afficher_retard()
 
     def _carte_choisie(self, *_):
         if not self._maj:
@@ -334,8 +437,14 @@ class Fenetre(Adw.ApplicationWindow):
 
     def _regarder_ou_arreter(self, *_):
         if self.lecture.en_cours:
-            self.lecture.arreter()
-            self._mettre_a_jour_boutons()
+            def fin():
+                self.lecture.arreter()
+                self._mettre_a_jour_boutons()
+            if self.enregistreur and self.enregistreur.en_cours:
+                self.bouton.set_sensitive(False)
+                self.enregistreur.arreter(puis=fin)
+            else:
+                fin()
             return
         carte, mode = self.carte(), self.mode()
         if carte is None or mode is None:
@@ -346,9 +455,12 @@ class Fenetre(Adw.ApplicationWindow):
                                   self.reglages.tampon_son_ms, self.reglages.plein_ecran)
         except GLib.Error as e:
             self.annoncer(f"mpv n'a pas pu démarrer : {e.message}")
+        self._mode_lecture = mode
         self._mettre_a_jour_boutons()
 
     def _lecture_finie(self, erreur):
+        if self.enregistreur is not None:
+            self.enregistreur.mpv_termine()
         if erreur:
             if "busy" in erreur.lower() or "occupé" in erreur.lower():
                 erreur = "la carte est déjà utilisée par un autre programme"
@@ -360,7 +472,8 @@ class Fenetre(Adw.ApplicationWindow):
 
     def _mettre_a_jour_boutons(self):
         en_cours = self.lecture.en_cours
-        test = self._test is not None
+        test = self._test is not None or self._mesure is not None
+        enregistre = bool(self.enregistreur and self.enregistreur.en_cours)
         self.bouton.set_label("Arrêter" if en_cours else "Regarder")
         for classe, active in (("suggested-action", not en_cours), ("destructive-action", en_cours)):
             (self.bouton.add_css_class if active else self.bouton.remove_css_class)(classe)
@@ -368,7 +481,138 @@ class Fenetre(Adw.ApplicationWindow):
         for ligne in (self.ligne_carte, self.ligne_mode):
             ligne.set_sensitive(not en_cours and not test)
         self.ligne_plein.set_sensitive(not test)
-        self.bouton_test.set_sensitive(bool(self.cartes) and not en_cours)
+        self.bouton_test.set_sensitive(bool(self.cartes) and not en_cours and self._mesure is None)
+        self.bouton_retard.set_sensitive(bool(self.cartes) and not en_cours and self._test is None)
+        self.bouton_capture.set_sensitive(en_cours)
+        self.bouton_enr.set_sensitive(en_cours)
+        self.bouton_enr.set_label("Arrêter l'enregistrement" if enregistre else "Enregistrer")
+        (self.bouton_enr.add_css_class if enregistre else self.bouton_enr.remove_css_class)("destructive-action")
+        if not enregistre:
+            self.ligne_enr.set_subtitle(self._texte_enr_repos())
+
+    # --- Capture et enregistrement ------------------------------------------------------------------------------
+
+    def _touche(self, action):
+        if action == "capture":
+            self._capturer()
+        elif action == "enregistrement":
+            self._enregistrer_ou_arreter()
+
+    def _capturer(self, *_):
+        if not self.lecture.en_cours:
+            return
+        dossier = dossier_images()
+        try:
+            os.makedirs(dossier, exist_ok=True)
+        except OSError as e:
+            self.annoncer(f"Capture impossible : {e.strerror}")
+            return
+        chemin = os.path.join(dossier, nom_libre(dossier, datetime.now(), [".png"]) + ".png")
+
+        def fait(erreur, _donnee):
+            if erreur:
+                self.annoncer(f"Capture ratée : {erreur}")
+                return
+            self.lecture.afficher("Image enregistrée")
+            toast = Adw.Toast(title=GLib.markup_escape_text(f"Image enregistrée : {os.path.basename(chemin)}"),
+                              button_label="Ouvrir", timeout=5)
+            toast.connect("button-clicked", lambda *_: _ouvrir(chemin))
+            self.toasts.add_toast(toast)
+        self.lecture.commande("screenshot-to-file", chemin, "video", rappel=fait, asynchrone=True)
+
+    def _enregistrer_ou_arreter(self, *_):
+        if self.enregistreur and self.enregistreur.en_cours:
+            self.enregistreur.arreter(puis=self._mettre_a_jour_boutons)
+            return
+        if not self.lecture.en_cours or self._mode_lecture is None:
+            return
+        source = self.source()
+        self.enregistreur = Enregistreur(self.lecture, 1 / float(self._mode_lecture.ips), self._enregistrement_fini)
+        try:
+            self.enregistreur.demarrer(source.nom if source else None)
+        except OSError as e:
+            self.enregistreur = None
+            self.annoncer(f"Enregistrement impossible : {e.strerror or e}")
+            return
+        self.lecture.afficher("● Enregistrement")
+        GLib.timeout_add_seconds(1, self._suivre_enregistrement)
+        self._suivre_enregistrement()
+        self._mettre_a_jour_boutons()
+
+    def _suivre_enregistrement(self):
+        enr = self.enregistreur
+        if enr is None or not enr.en_cours:
+            return GLib.SOURCE_REMOVE
+        libre = place_libre(os.path.dirname(enr.brut.video))
+        self.ligne_enr.set_subtitle(f"● {texte_duree(time.monotonic() - enr.debut)} · {texte_taille(enr.taille())}"
+                                    f" · reste {texte_taille(libre)} sur le disque")
+        if libre < MARGE_ARRET:
+            self.annoncer("Disque presque plein : enregistrement arrêté")
+            enr.arreter(puis=self._mettre_a_jour_boutons)
+            return GLib.SOURCE_REMOVE
+        return GLib.SOURCE_CONTINUE
+
+    def _enregistrement_fini(self, brut, erreur):
+        enr = self.enregistreur
+        if enr is not None and enr.erreur_son:
+            self.annoncer(f"Son non enregistré : {enr.erreur_son}")
+        if brut is None:
+            self.annoncer(f"Enregistrement perdu : {erreur}")
+        elif erreur:
+            self.annoncer(f"Enregistrement gardé brut dans {_court(os.path.dirname(brut.video))}, compression non "
+                          f"lancée : {erreur}")
+        else:
+            self.lecture.afficher("Enregistrement fini")
+            self.annoncer(f"Enregistrement fini : le MP4 arrivera dans {_court(brut.dossier)} (une notification "
+                          "le dira)")
+        self._mettre_a_jour_boutons()
+
+    # --- Retard réel (mire) -------------------------------------------------------------------------------------
+
+    def _afficher_retard(self):
+        carte = self.carte()
+        donnees = self.reglages.retards.get(identifiant_carte(carte)) if carte else None
+        resultat = ResultatRetard.depuis_dict(donnees) if donnees else None
+        if resultat is None:
+            self.ligne_retard.set_subtitle("Pas encore mesuré : il faut brancher une sortie HDMI du PC sur la carte")
+            return
+        mode = mode_depuis_cle(resultat.mode, carte.modes)
+        self.ligne_retard.set_subtitle(
+            f"≈ {resultat.total_ms:.0f} ms de la source à l'écran, dont {resultat.carte_ms:.0f} ms dans la carte "
+            f"({mode.libelle if mode else resultat.mode})")
+
+    def _mesurer_ou_annuler(self, *_):
+        if self._mesure is not None:
+            self._mesure.annuler()
+            return
+        carte, mode, i = self.carte(), self.mode(), self.ligne_ecran.get_selected()
+        if carte is None or mode is None or not 0 <= i < len(self.ecrans):
+            return
+        from .mire import MesureRetard, duree_rafraichissement_ms
+        self._mesure = MesureRetard(carte, mode, self.ecrans[i], duree_rafraichissement_ms(self._ecran_fenetre()),
+                                    lambda resultat, erreur: self._mesure_finie(carte, resultat, erreur))
+        self.bouton_retard.set_label("Annuler")
+        self.attente_retard.set_visible(True)
+        self.attente_retard.start()
+        self._mettre_a_jour_boutons()
+        self._mesure.demarrer()
+
+    def _mesure_finie(self, carte, resultat, erreur):
+        self._mesure = None
+        self.attente_retard.stop()
+        self.attente_retard.set_visible(False)
+        self.bouton_retard.set_label("Mesurer")
+        if erreur:
+            self.annoncer(f"Mesure du retard : {erreur}")
+        else:
+            self.reglages.retards[identifiant_carte(carte)] = resultat.vers_dict()
+            self._enregistrer()
+            self._afficher_retard()
+            self.ligne_retard.set_expanded(True)
+            self.annoncer(f"Retard réel ≈ {resultat.total_ms:.0f} ms (carte {resultat.carte_ms:.0f} ms, de "
+                          f"{resultat.min_ms:.0f} à {resultat.max_ms:.0f} ; décodage {resultat.decodage_ms:.0f} ms ; "
+                          f"affichage {resultat.affichage_ms:.0f} ms)")
+        self._mettre_a_jour_boutons()
 
     # --- Test de vitesse ------------------------------------------------------------------------------------------
 
@@ -429,6 +673,11 @@ class Fenetre(Adw.ApplicationWindow):
     # --- Fermeture --------------------------------------------------------------------------------------------------
 
     def _fermeture(self, *_):
+        if self.enregistreur and self.enregistreur.en_cours:
+            self.enregistreur.arreter(puis=self.close)     # fichiers terminés et compression lancée, puis on ferme
+            return True
+        if self._mesure is not None:
+            self._mesure.annuler()
         if self._test is not None:
             self._test[1].set()
         self.lecture.arreter()

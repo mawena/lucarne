@@ -3,6 +3,25 @@
 Toutes les modifications notables de Lucarne sont consignées ici.
 Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versions : [SemVer](https://semver.org/lang/fr/).
 
+## [0.2.0] - 2026-11-25
+
+### Ajouté
+- Capture d'image : bouton **Capturer** ou touche `S` dans la fenêtre de mpv, PNG dans `~/Images/Lucarne`
+  (`Lucarne AAAA-MM-JJ HH-MM-SS.png`), par la prise de commande de mpv (`--input-ipc-server`).
+- Enregistrement : bouton ou touche `R`. mpv copie le flux MJPEG brut (rien de plus sur l'image) et GStreamer
+  enregistre le son de la carte en FLAC, dans `~/Vidéos/Lucarne/brut/` (environ 24 Go/h en 720×480, 70 Go/h en 1080p) ;
+  arrêt automatique sous 2 Go libres, refus de démarrer sous 4 Go.
+- Compression à l'arrêt : `systemd-run --user` lance `lucarne --compresser <description.json>`, qui passe ffmpeg par la
+  file Gagarine (priorité de fond) : H.264 VA-API (sinon x264) et AAC vers `~/Vidéos/Lucarne/<nom>.mp4`, suppression
+  du brut, notification du bureau. Son calé sur l'image (décalage mesuré).
+- Bruts restés en attente relancés au démarrage ; en cas d'échec, brut gardé, erreur notée dans le `.json`, relance
+  manuelle par `lucarne --compresser`.
+- Retard réel : rangée **Retard réel** (section Image). Une mire (carré noir/blanc sur fond gris, toutes les 0,4 s,
+  sans danger pour l'épilepsie) s'affiche une dizaine de secondes en plein écran sur la sortie HDMI branchée sur la
+  carte ; résultat = retard de la carte (médiane) + décodage + un rafraîchissement d'écran = retard total. Gardé dans
+  les réglages (`retards`, `ecran_mire`). `Échap` arrête la mire.
+- Dépendances : `ffmpeg`, `gstreamer1.0-pulseaudio`.
+
 ## [0.1.0] - 2026-11-25
 
 ### Ajouté
@@ -20,4 +39,5 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versions : [S
 - Réglages gardés dans `~/.config/lucarne/reglages.json`.
 - Paquet `.deb` (lanceur de bureau, icônes, metainfo).
 
+[0.2.0]: https://github.com/mawena/lucarne/releases/tag/v0.2.0
 [0.1.0]: https://github.com/mawena/lucarne/releases/tag/v0.1.0

@@ -30,6 +30,9 @@ if __name__ == "__main__":
         from lucarne import __version__
         print(f"lucarne {__version__}")
         sys.exit(0)
+    if sys.argv[1:2] == ["--compresser"]:
+        from lucarne.compression import main as compresser
+        sys.exit(compresser(sys.argv[2:]))
     _dependances()
     from lucarne.application import main
     sys.exit(main())

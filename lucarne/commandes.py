@@ -4,6 +4,7 @@ L'image et le son passent par deux chemins séparés : mpv lit la vidéo seule (
 image est affichée dès qu'elle est décodée) et PipeWire renvoie directement le son de la carte vers la sortie
 choisie. Les relier dans mpv fait attendre le son (le flux reste « bouchonné ») et ajoute du retard à l'image.
 """
+import os
 
 TAMPON_SON_MS = 30          # tampon par défaut de pw-loopback : assez court pour ne pas s'entendre, sans craquements
 TAMPON_SON_MIN, TAMPON_SON_MAX = 10, 300
@@ -14,8 +15,14 @@ def texte_ips(ips):
     return str(ips.numerator) if ips.denominator == 1 else f"{ips.numerator}/{ips.denominator}"
 
 
-def commande_mpv(carte, mode, plein_ecran=False):
-    """mpv réglé pour le moins de retard possible sur une source vidéo en direct."""
+TOUCHES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "input.conf")
+
+
+def commande_mpv(carte, mode, plein_ecran=False, prise=None):
+    """mpv réglé pour le moins de retard possible sur une source vidéo en direct.
+
+    prise : chemin de la prise de commande (capture, enregistrement, touches S et R de Lucarne).
+    """
     options_v4l2 = ",".join((
         f"video_size={mode.largeur}x{mode.hauteur}",
         f"input_format={mode.format}",
@@ -36,7 +43,11 @@ def commande_mpv(carte, mode, plein_ecran=False):
         f"--title=Lucarne — {carte.nom}",
         "--force-window=immediate",
         "--msg-level=all=error",
+        "--screenshot-format=png",
+        "--screenshot-png-compression=3",   # rapide à écrire, à peine plus gros qu'en compression maximale
     ]
+    if prise:
+        commande += [f"--input-ipc-server={prise}", f"--input-conf={TOUCHES}"]
     if plein_ecran:
         commande.append("--fs")
     return commande

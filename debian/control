@@ -18,6 +18,8 @@ Depends: ${misc:Depends},
          gir1.2-gstreamer-1.0,
          gstreamer1.0-plugins-good,
          mpv,
+         ffmpeg,
+         gstreamer1.0-pulseaudio,
          pipewire-bin,
          pulseaudio-utils
 Recommends: gstreamer1.0-pipewire
@@ -34,3 +36,8 @@ Description: low-latency viewer for USB HDMI capture cards
  and decoding time) and picks the fastest one. The card's sound is found
  automatically (same USB device), cards and audio outputs are followed live
  when plugged or unplugged, and settings are kept between launches.
+ .
+ A key (S) saves the picture as a PNG and another (R) records the video
+ with its sound: the raw MJPEG stream and the sound are saved while playing,
+ then compressed to H.264 + AAC with ffmpeg in the background. A pattern
+ shown on an HDMI output wired to the card measures the real end-to-end delay.

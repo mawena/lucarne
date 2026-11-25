@@ -2,14 +2,32 @@
 
 Fermer la fenêtre de mpv (ou « q ») termine la lecture : le son est alors coupé aussi. Si pw-loopback s'arrête seul
 (sortie Bluetooth déconnectée, par exemple), l'image continue et l'interface est prévenue.
+
+mpv ouvre une prise de commande (voir prise_mpv) : capture d'image, enregistrement et touches de Lucarne.
 """
+import itertools
+import os
 import signal
 
 from gi.repository import Gio, GLib
 
 from .commandes import commande_mpv, commande_son
+from .prise_mpv import PriseMpv
 
 DELAI_ARRET_S = 2       # après SIGTERM, temps laissé au processus avant SIGKILL
+_numeros = itertools.count(1)
+
+
+def chemin_prise():
+    """Prise de commande propre à chaque mpv lancé : dans le dossier d'exécution de la session (privé)."""
+    return os.path.join(GLib.get_user_runtime_dir(), f"lucarne-{os.getpid()}-{next(_numeros)}.sock")
+
+
+def _supprimer(chemin):
+    try:
+        os.unlink(chemin)
+    except OSError:
+        pass
 
 
 def _lancer(argv):
@@ -39,13 +57,16 @@ class Lecture:
     """Une lecture : démarrer(), changer_son(), arreter(). Rappels appelés dans le fil principal GLib :
 
     sur_fin(erreur)      : mpv s'est terminé (erreur vide si l'utilisateur l'a fermé normalement) ;
-    sur_son_perdu(texte) : pw-loopback s'est arrêté tout seul.
+    sur_son_perdu(texte) : pw-loopback s'est arrêté tout seul ;
+    sur_touche(action)   : une touche de Lucarne a été pressée dans l'image (« capture », « enregistrement »).
     """
 
-    def __init__(self, sur_fin, sur_son_perdu):
+    def __init__(self, sur_fin, sur_son_perdu, sur_touche=None):
         self._sur_fin = sur_fin
         self._sur_son_perdu = sur_son_perdu
+        self._sur_touche = sur_touche
         self._mpv = None
+        self.prise = None
         self._son = None
         self._arret_demande = False
 
@@ -56,9 +77,28 @@ class Lecture:
     def demarrer(self, carte, mode, source=None, sortie=None, tampon_ms=None, plein_ecran=False):
         """Lance l'image et, s'il y a une source audio, le son. Lève GLib.Error si mpv ne peut pas démarrer."""
         self._arret_demande = False
-        self._mpv = _lancer(commande_mpv(carte, mode, plein_ecran))
-        self._mpv.communicate_utf8_async(None, None, self._mpv_termine, self._mpv)
+        chemin = chemin_prise()
+        _supprimer(chemin)
+        self._mpv = _lancer(commande_mpv(carte, mode, plein_ecran, chemin))
+        self.prise = PriseMpv(chemin, self._message)
+        self._mpv.communicate_utf8_async(None, None, self._mpv_termine, (self._mpv, self.prise))
         self.changer_son(source, sortie, tampon_ms)
+
+    def commande(self, *arguments, rappel=None, asynchrone=False):
+        """Commande envoyée à mpv ; rappel(erreur, donnee). Sans lecture en cours, le rappel reçoit une erreur."""
+        if self.prise is None:
+            if rappel:
+                rappel("aucune lecture en cours", None)
+            return
+        self.prise.commande(*arguments, rappel=rappel, asynchrone=asynchrone)
+
+    def afficher(self, texte, duree_ms=1500):
+        """Texte affiché un moment par-dessus l'image."""
+        self.commande("show-text", texte, str(duree_ms))
+
+    def _message(self, arguments):
+        if len(arguments) >= 2 and arguments[0] == "lucarne" and self._sur_touche:
+            self._sur_touche(arguments[1])
 
     def changer_son(self, source, sortie=None, tampon_ms=None):
         """(Re)lance le renvoi du son vers une autre sortie ; source None coupe le son."""
@@ -77,11 +117,14 @@ class Lecture:
     def arreter(self):
         self._arret_demande = True
         mpv, son = self._mpv, self._son
-        self._mpv = self._son = None
+        self._mpv = self._son = self.prise = None
         _arreter(son)
         _arreter(mpv)
 
-    def _mpv_termine(self, processus, resultat, attendu):
+    def _mpv_termine(self, processus, resultat, lancement):
+        attendu, prise = lancement
+        prise.fermer()
+        _supprimer(prise.chemin)
         try:
             _ok, _sortie, erreurs = processus.communicate_utf8_finish(resultat)
         except GLib.Error as e:
@@ -89,7 +132,7 @@ class Lecture:
         if attendu is not self._mpv and self._mpv is not None:
             return                                  # ancienne lecture, déjà remplacée
         demande = self._arret_demande
-        son, self._son, self._mpv = self._son, None, None
+        son, self._son, self._mpv, self.prise = self._son, None, None, None
         _arreter(son)
         code = processus.get_exit_status() if processus.get_if_exited() else 0
         # mpv sort avec 0 quand on le ferme (q, croix) ; 4 quand il est interrompu par un signal (notre arrêt)

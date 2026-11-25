@@ -1,3 +1,4 @@
+import os
 import unittest
 from fractions import Fraction
 
@@ -44,3 +45,17 @@ class CommandeSon(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CommandeMpvPrise(unittest.TestCase):
+    def test_avec_prise(self):
+        argv = commande_mpv(CARTE, Mode("mjpeg", 1280, 720, Fraction(60)), prise="/tmp/x.sock")
+        self.assertIn("--input-ipc-server=/tmp/x.sock", argv)
+        conf = next(a for a in argv if a.startswith("--input-conf="))
+        chemin = conf.split("=", 1)[1]
+        self.assertEqual(os.path.basename(chemin), "input.conf")
+        self.assertTrue(os.path.isfile(chemin))
+
+    def test_sans_prise(self):
+        argv = commande_mpv(CARTE, Mode("mjpeg", 1280, 720, Fraction(60)))
+        self.assertFalse(any(a.startswith(("--input-ipc-server", "--input-conf")) for a in argv))

@@ -38,8 +38,22 @@ Lucarne règle tout ça en un bouton : **Regarder**.
   **Automatique** prend ensuite le plus rapide ; à 1 ms près, la plus grande résolution. Les résultats sont gardés.
 - **Branchements suivis en direct** : brancher ou débrancher une carte, un casque Bluetooth ou un dock met les listes
   à jour sans relancer.
+- **Capture d'image** : la touche `s` (ou le bouton **Capturer**) demande à mpv, par sa prise de commande
+  (`--input-ipc-server`), d'enregistrer l'image affichée en PNG.
+- **Enregistrement** : pendant qu'on enregistre, mpv copie le flux MJPEG de la carte tel quel (`stream-record` : rien
+  de plus sur l'image) et GStreamer enregistre le son de la carte en FLAC. À l'arrêt, un processus séparé
+  (`systemd-run --user`, donc indépendant de la fenêtre) lance `lucarne --compresser`, qui passe ffmpeg par la file
+  Gagarine en priorité de fond : H.264 (VA-API si la carte graphique le permet, sinon x264) et AAC, en un MP4. Le
+  son est calé sur l'image d'après le décalage mesuré au démarrage. Le brut est supprimé une fois le MP4 fini.
+- **Retard réel** : une mire (un carré noir ou blanc sur fond gris, qui change toutes les 0,4 s, sans danger pour
+  l'épilepsie) s'affiche en plein écran sur une sortie HDMI du PC branchée sur la carte. Lucarne chronomètre l'arrivée
+  de chaque changement dans les images de la carte. Résultat : retard de la carte (médiane) + décodage + un
+  rafraîchissement d'écran = retard total.
 - **Alerte Bluetooth** : un casque Bluetooth ajoute environ 200 ms de retard au son ; Lucarne le rappelle quand la
   sortie en est un.
+
+L'enregistrement brut est volumineux : environ 24 Go par heure en 720×480 et 70 Go par heure en 1080p. Il refuse de
+démarrer sous 4 Go libres et s'arrête tout seul sous 2 Go libres.
 
 La latence affichée par le test est une estimation pour comparer les modes entre eux (un intervalle d'image, plus
 l'attente, plus le décodage). Le retard total de bout en bout ajoute l'encodage dans la carte et l'affichage
@@ -87,7 +101,8 @@ sha256sum -c SHA256SUMS && sudo apt install ./lucarne_<version>_all.deb
 ```
 
 Dépendances (installées par apt) : Python 3, PyGObject, GTK 4, libadwaita, GStreamer (plugins good), mpv,
-`pipewire-bin` (`pw-loopback`), `pulseaudio-utils` (`pactl`).
+`pipewire-bin` (`pw-loopback`), `pulseaudio-utils` (`pactl`), `gstreamer1.0-pulseaudio` (son de
+l'enregistrement), `ffmpeg` (compression). La file Gagarine est utilisée si elle est installée.
 
 ## Utilisation
 
@@ -96,8 +111,32 @@ Dépendances (installées par apt) : Python 3, PyGObject, GTK 4, libadwaita, GSt
    le mode **Automatique** prend alors le plus rapide.
 3. Choisis la **Sortie** du son (la sortie du système par défaut), puis **Regarder**.
 
-Dans la fenêtre de l'image : `f` ou double-clic pour le plein écran, `q` pour fermer (le son s'arrête avec l'image).
-La sortie du son et son tampon se changent pendant la lecture ; seul le son redémarre.
+Dans la fenêtre de l'image : `f` ou double-clic pour le plein écran, `s` pour capturer l'image, `r` pour démarrer ou
+arrêter l'enregistrement, `q` pour fermer (le son s'arrête avec l'image). La sortie du son et son tampon se changent
+pendant la lecture ; seul le son redémarre.
+
+### Capturer une image
+
+Bouton **Capturer** ou touche `S` dans la fenêtre de l'image : un PNG est écrit dans `~/Images/Lucarne`
+(`Lucarne AAAA-MM-JJ HH-MM-SS.png`).
+
+### Enregistrer
+
+Bouton **Enregistrer** ou touche `R` (même touche pour arrêter). Le brut va dans `~/Vidéos/Lucarne/brut/`. À l'arrêt,
+la compression se lance toute seule en arrière-plan (priorité de fond, elle ne gêne pas le jeu) et produit
+`~/Vidéos/Lucarne/<nom>.mp4` ; une notification du bureau annonce la fin. Les bruts restés en attente (PC éteint en
+route, par exemple) sont relancés au démarrage de Lucarne. Si la compression échoue, le brut est gardé, l'erreur est
+notée dans son `.json` et on la relance à la main :
+
+```bash
+lucarne --compresser ~/Vidéos/Lucarne/brut/<nom>.json
+```
+
+### Mesurer le retard réel
+
+Dans la section Image, rangée **Retard réel** : branche une sortie HDMI du PC sur l'entrée de la carte, choisis cet
+écran, clique **Mesurer**. La mire occupe cet écran en plein écran pendant une dizaine de secondes ; `Échap` l'arrête.
+Le résultat (retard de la carte, décodage, rafraîchissement d'écran, total) est gardé pour la carte.
 
 Sans l'interface, la même chose à la main :
 
@@ -112,8 +151,12 @@ kill %1
 ## Configuration
 
 Les réglages sont gardés dans `~/.config/lucarne/reglages.json` : dernière carte, mode choisi (vide = automatique),
-sortie du son (vide = sortie du système), tampon du son, plein écran au lancement, et les résultats du test de chaque
-carte (par nom de carte). Supprimer ce fichier remet tout à zéro.
+sortie du son (vide = sortie du système), tampon du son, plein écran au lancement, les résultats du test de chaque
+carte (par nom de carte, `tests`), les mesures du retard réel (`retards`) et l'écran de la mire (`ecran_mire`).
+Supprimer ce fichier remet tout à zéro.
+
+Dossiers : captures dans `~/Images/Lucarne`, vidéos finies dans `~/Vidéos/Lucarne`, bruts en attente dans
+`~/Vidéos/Lucarne/brut` (suivent les dossiers Images et Vidéos de l'utilisateur).
 
 ## Structure
 
@@ -126,6 +169,12 @@ lucarne/modes.py            modes de la carte lus dans les caps GStreamer
 lucarne/mesure.py           test de vitesse d'un mode et choix du plus rapide
 lucarne/commandes.py        commandes mpv et pw-loopback
 lucarne/lecture.py          processus de lecture suivis par GLib
+lucarne/prise_mpv.py        prise de commande de mpv (--input-ipc-server) : capture, copie du flux, messages
+lucarne/input.conf          touches S et R dans la fenêtre de mpv
+lucarne/enregistrement.py   enregistrement brut (mpv + son FLAC), calage du son, bruts en attente, lancement de la compression
+lucarne/compression.py      lucarne --compresser : ffmpeg par la file Gagarine, MP4, notification
+lucarne/retard.py           calcul du retard réel : fronts de la mire, appariement, médiane
+lucarne/mire.py             mire plein écran et chronométrage des changements
 lucarne/config.py           réglages
 data/                       lanceur de bureau, icônes, metainfo
 debian/, scripts/           paquet .deb (make deb)

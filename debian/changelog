@@ -1,3 +1,14 @@
+lucarne (0.2.0) unstable; urgency=medium
+
+  * Capture d'image (touche S) en PNG dans ~/Images/Lucarne.
+  * Enregistrement (touche R) : flux MJPEG brut et son FLAC, puis
+    compression en H.264 + AAC par ffmpeg dans la file Gagarine
+    (lucarne --compresser), bruts en attente relancés au démarrage.
+  * Mesure du retard réel de bout en bout avec une mire plein écran.
+  * Nouvelles dépendances : ffmpeg, gstreamer1.0-pulseaudio.
+
+ -- mawena <gamligocharles@gmail.com>  Wed, 25 Nov 2026 12:00:00 +0100
+
 lucarne (0.1.0) unstable; urgency=medium
 
   * Première version : image de la carte par mpv réglé pour la latence
