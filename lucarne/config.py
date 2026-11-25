@@ -25,6 +25,9 @@ class Reglages:
     tests: dict = field(default_factory=dict)   # identifiant de carte -> liste de Resultat.vers_dict()
     retards: dict = field(default_factory=dict)  # identifiant de carte -> ResultatRetard.vers_dict() (dernière mesure)
     ecran_mire: str = ""            # connecteur de l'écran branché sur la carte pour la mesure du retard
+    enregistrement_direct: bool = False     # vrai : compressé en direct ; faux : brut, puis compressé
+    dossier_images: str = ""        # dossier des captures ; vide = <Images>/Lucarne
+    dossier_videos: str = ""        # dossier des vidéos ; vide = <Vidéos>/Lucarne
 
     @classmethod
     def charger(cls, chemin=None):

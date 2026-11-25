@@ -52,8 +52,16 @@ Lucarne règle tout ça en un bouton : **Regarder**.
 - **Alerte Bluetooth** : un casque Bluetooth ajoute environ 200 ms de retard au son ; Lucarne le rappelle quand la
   sortie en est un.
 
-L'enregistrement brut est volumineux : environ 24 Go par heure en 720×480 et 70 Go par heure en 1080p. Il refuse de
-démarrer sous 4 Go libres et s'arrête tout seul sous 2 Go libres.
+- **Enregistrement compressé en direct** (réglage **Manière d'enregistrer**) : mpv écrit le MJPEG dans une file
+  nommée au lieu d'un fichier. Lucarne la vide dans deux fils, sans jamais faire attendre mpv (réserve en mémoire
+  jusqu'à 512 Mo ; au-delà, l'enregistrement s'arrête mais l'image continue), et la passe à ffmpeg qui compresse en
+  H.264 au fil de l'eau (VA-API, sinon x264 `ultrafast`). Ffmpeg tourne hors de la file Gagarine : c'est du temps
+  réel. Le son reste en FLAC ; à l'arrêt, l'image est copiée telle quelle et le son passe en AAC, réunis en MP4 en
+  quelques secondes (par la file Gagarine). Essai réel : 8 s de 1080p60 donnent 1,5 Mo, image et son de même durée.
+
+En mode brut, l'enregistrement est volumineux : environ 24 Go par heure en 720×480 et 70 Go par heure en 1080p. En
+mode direct, compter 2 à 4 Go par heure. Dans les deux cas, il refuse de démarrer sous 4 Go libres et s'arrête tout
+seul sous 2 Go libres.
 
 La latence affichée par le test est une estimation pour comparer les modes entre eux (un intervalle d'image, plus
 l'attente, plus le décodage). Le retard total de bout en bout ajoute l'encodage dans la carte et l'affichage
@@ -122,8 +130,18 @@ Bouton **Capturer** ou touche `S` dans la fenêtre de l'image : un PNG est écri
 
 ### Enregistrer
 
-Bouton **Enregistrer** ou touche `R` (même touche pour arrêter). Le brut va dans `~/Vidéos/Lucarne/brut/`. À l'arrêt,
-la compression se lance toute seule en arrière-plan (priorité de fond, elle ne gêne pas le jeu) et produit
+Dans la section **Capture et enregistrement**, la rangée **Manière d'enregistrer** propose :
+
+- **Brut, puis compressé** (par défaut, comportement de la 0.2.0) : le plus léger pour le processeur pendant le jeu,
+  mais 24 à 70 Go par heure en attendant la compression ;
+- **Compressé en direct** : l'image est compressée en H.264 pendant l'enregistrement, 2 à 4 Go par heure, et la
+  vidéo est prête quelques secondes après l'arrêt.
+
+Les rangées **Dossier des captures** et **Dossier des vidéos** montrent où les fichiers vont ; **Changer…** ouvre un
+sélecteur de dossier et le bouton de retour remet le dossier par défaut.
+
+Bouton **Enregistrer** ou touche `R` (même touche pour arrêter). En mode brut, le brut va dans
+`~/Vidéos/Lucarne/brut/`. À l'arrêt, la compression se lance toute seule en arrière-plan (priorité de fond, elle ne gêne pas le jeu) et produit
 `~/Vidéos/Lucarne/<nom>.mp4` ; une notification du bureau annonce la fin. Les bruts restés en attente (PC éteint en
 route, par exemple) sont relancés au démarrage de Lucarne. Si la compression échoue, le brut est gardé, l'erreur est
 notée dans son `.json` et on la relance à la main :
@@ -155,7 +173,15 @@ sortie du son (vide = sortie du système), tampon du son, plein écran au lancem
 carte (par nom de carte, `tests`), les mesures du retard réel (`retards`) et l'écran de la mire (`ecran_mire`).
 Supprimer ce fichier remet tout à zéro.
 
-Dossiers : captures dans `~/Images/Lucarne`, vidéos finies dans `~/Vidéos/Lucarne`, bruts en attente dans
+Réglages d'enregistrement (0.3.0) :
+
+| Réglage | Rôle | Défaut |
+| --- | --- | --- |
+| `enregistrement_direct` | `true` : compressé en direct ; `false` : brut puis compressé | `false` |
+| `dossier_images` | dossier des captures PNG | vide = `<Images>/Lucarne` |
+| `dossier_videos` | dossier des vidéos finies (le brut va dans `brut/` à l'intérieur) | vide = `<Vidéos>/Lucarne` |
+
+Par défaut : captures dans `~/Images/Lucarne`, vidéos finies dans `~/Vidéos/Lucarne`, bruts en attente dans
 `~/Vidéos/Lucarne/brut` (suivent les dossiers Images et Vidéos de l'utilisateur).
 
 ## Structure
@@ -171,7 +197,7 @@ lucarne/commandes.py        commandes mpv et pw-loopback
 lucarne/lecture.py          processus de lecture suivis par GLib
 lucarne/prise_mpv.py        prise de commande de mpv (--input-ipc-server) : capture, copie du flux, messages
 lucarne/input.conf          touches S et R dans la fenêtre de mpv
-lucarne/enregistrement.py   enregistrement brut (mpv + son FLAC), calage du son, bruts en attente, lancement de la compression
+lucarne/enregistrement.py   enregistrement brut ou direct (mpv + son FLAC, relais vers ffmpeg), calage du son, bruts en attente, lancement de la compression
 lucarne/compression.py      lucarne --compresser : ffmpeg par la file Gagarine, MP4, notification
 lucarne/retard.py           calcul du retard réel : fronts de la mire, appariement, médiane
 lucarne/mire.py             mire plein écran et chronométrage des changements
