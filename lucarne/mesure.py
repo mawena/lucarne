@@ -61,9 +61,9 @@ def choisir(modes, resultats):
     return max(proches, key=lambda m: (m.pixels, m.compresse, -par_cle[m.cle].latence_ms))
 
 
-def _caps(mode):
-    from .commandes import texte_ips
-    ips = texte_ips(mode.ips)
+def caps_gst(mode):
+    """Caps GStreamer d'un mode ; la cadence doit être une fraction (« 60/1 »), « 60 » serait lu comme un entier."""
+    ips = f"{mode.ips.numerator}/{mode.ips.denominator}"
     if mode.compresse:
         return f"image/jpeg,width={mode.largeur},height={mode.hauteur},framerate={ips}"
     gst = {"yuyv422": "YUY2", "nv12": "NV12"}[mode.format]
@@ -81,7 +81,7 @@ def mesurer_mode(chemin, mode, arret=None):
     Gst.init(None)
 
     decodeur = "jpegdec name=dec ! " if mode.compresse else ""
-    description = (f"v4l2src device={chemin} name=src ! {_caps(mode)} ! {decodeur}"
+    description = (f"v4l2src device={chemin} name=src ! {caps_gst(mode)} ! {decodeur}"
                    "fakesink name=fin sync=false async=false")
     try:
         pipeline = Gst.parse_launch(description)

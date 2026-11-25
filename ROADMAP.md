@@ -5,14 +5,14 @@ envoie son son vers la sortie audio choisie (casque Bluetooth, haut-parleurs, do
 
 ## Phase 1 — 0.1.0 : regarder et entendre en un clic
 
-- [ ] Dépôt, git flow, licence, README, CHANGELOG
-- [ ] Modes de la carte : lecture des formats annoncés (MJPEG, YUYV, résolutions, images par seconde)
-- [ ] Appareils : cartes de capture (GStreamer), sources et sorties audio (`pactl`), association image/son par le port USB
-- [ ] Lecture : image par mpv réglé pour la latence minimale, son par `pw-loopback` vers la sortie choisie
-- [ ] Test de la carte : débit réel, attente et décodage mesurés pour chaque mode, choix automatique du plus rapide
-- [ ] Réglages gardés entre deux lancements (carte, mode, sortie, tampon du son, plein écran)
-- [ ] Fenêtre GTK 4 / libadwaita : carte, mode, son, sortie, bouton Regarder/Arrêter, alerte Bluetooth
-- [ ] Branchement et débranchement suivis en direct (cartes et sorties audio)
+- [x] Dépôt, git flow, licence, README, CHANGELOG
+- [x] Modes de la carte : lecture des formats annoncés (MJPEG, YUYV, résolutions, images par seconde)
+- [x] Appareils : cartes de capture (GStreamer), sources et sorties audio (`pactl`), association image/son par le port USB
+- [x] Lecture : image par mpv réglé pour la latence minimale, son par `pw-loopback` vers la sortie choisie
+- [x] Test de la carte : débit réel, attente et décodage mesurés pour chaque mode, choix automatique du plus rapide
+- [x] Réglages gardés entre deux lancements (carte, mode, sortie, tampon du son, plein écran)
+- [x] Fenêtre GTK 4 / libadwaita : carte, mode, son, sortie, bouton Regarder/Arrêter, alerte Bluetooth
+- [x] Branchement et débranchement suivis en direct (cartes et sorties audio)
 - [ ] Paquet `.deb` (lanceur, icône, metainfo), lintian propre, installé sur le poste
 - [ ] Release 0.1.0 : tag, release GitHub, dépôt APT apt.mawena.cloud
 

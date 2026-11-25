@@ -18,13 +18,14 @@ def _lancer(argv):
 
 
 def _arreter(processus):
-    if processus is None or processus.get_if_exited() or processus.get_if_signaled():
+    """SIGTERM, puis SIGKILL après DELAI_ARRET_S. Sans risque sur un processus déjà terminé : GIO ne signale alors
+    plus rien (on ne peut pas lui demander s'il tourne encore : get_if_exited n'est valable qu'après sa fin)."""
+    if processus is None:
         return
     processus.send_signal(signal.SIGTERM)
 
     def forcer():
-        if not (processus.get_if_exited() or processus.get_if_signaled()):
-            processus.force_exit()
+        processus.force_exit()
         return GLib.SOURCE_REMOVE
     GLib.timeout_add_seconds(DELAI_ARRET_S, forcer)
 

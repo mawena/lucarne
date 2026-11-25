@@ -1,7 +1,7 @@
 import unittest
 from fractions import Fraction
 
-from lucarne.mesure import Resultat, choisir, modes_a_tester
+from lucarne.mesure import Resultat, caps_gst, choisir, modes_a_tester
 from lucarne.modes import Mode
 
 M1080 = Mode("mjpeg", 1920, 1080, Fraction(60))
@@ -44,6 +44,13 @@ class Choisir(unittest.TestCase):
     def test_aucun_resultat_valide(self):
         self.assertIsNone(choisir([M720], [res(M720, 0)]))
         self.assertIsNone(choisir([M720], []))
+
+
+class CapsGst(unittest.TestCase):
+    def test_cadence_en_fraction(self):
+        self.assertEqual(caps_gst(M720), "image/jpeg,width=1280,height=720,framerate=60/1")
+        self.assertEqual(caps_gst(Mode("yuyv422", 640, 480, Fraction(30000, 1001))),
+                         "video/x-raw,format=YUY2,width=640,height=480,framerate=30000/1001")
 
 
 class ModesATester(unittest.TestCase):
